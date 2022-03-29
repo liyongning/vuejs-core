@@ -39,6 +39,9 @@ let renderer: Renderer<Element | ShadowRoot> | HydrationRenderer
 
 let enabledHydration = false
 
+/**
+ * 调用 runtime-core 中的 createRenderer 方法创建渲染器并缓存 
+ */
 function ensureRenderer() {
   return (
     renderer ||
@@ -63,7 +66,13 @@ export const hydrate = ((...args) => {
   ensureHydrationRenderer().hydrate(...args)
 }) as RootHydrateFunction
 
+/**
+ * 对外暴露的 API，用于创建应用实例
+ * 1、获取 app 实例
+ * 2、覆写（增强）app 实力上的 mount 方法
+ */
 export const createApp = ((...args) => {
+  // 具体的 createApp 方法是由渲染器提供的
   const app = ensureRenderer().createApp(...args)
 
   if (__DEV__) {
@@ -71,17 +80,26 @@ export const createApp = ((...args) => {
     injectCompilerOptionsCheck(app)
   }
 
+  // app 实例上的 mount 方法
   const { mount } = app
+
+  // 覆写（增强）mount 方法
+  // 该 mount 方法就是应用中调用的 mount 方法，用于挂载
   app.mount = (containerOrSelector: Element | ShadowRoot | string): any => {
+    // 选择器
     const container = normalizeContainer(containerOrSelector)
     if (!container) return
 
+    // 实例上的组件选项
     const component = app._component
+    // 非函数式组件 && 组件选项上没有 render 方法 && 组件选项上没有 template 选项
+    // if 分之重点就一个：设置 component.template 选项
     if (!isFunction(component) && !component.render && !component.template) {
       // __UNSAFE__
       // Reason: potential execution of JS expressions in in-DOM template.
       // The user must make sure the in-DOM template is trusted. If it's
       // rendered by the server, the template should not contain any user data.
+      // 以选择器的子元素作为 template 内容
       component.template = container.innerHTML
       // 2.x compat check
       if (__COMPAT__ && __DEV__) {
@@ -98,9 +116,12 @@ export const createApp = ((...args) => {
       }
     }
 
+    // 挂载前清空容器的子元素，在这一步之前还能在页面上看到你的模版内容
     // clear content before mounting
     container.innerHTML = ''
+    // 执行核心的 mount 方法
     const proxy = mount(container, false, container instanceof SVGElement)
+    // 移除选择器元素上的 v-cloak 属性，设置 data-v-app 属性
     if (container instanceof Element) {
       container.removeAttribute('v-cloak')
       container.setAttribute('data-v-app', '')

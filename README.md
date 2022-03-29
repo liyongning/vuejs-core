@@ -1,43 +1,27 @@
-# vuejs/core [![npm](https://img.shields.io/npm/v/vue.svg)](https://www.npmjs.com/package/vue) [![build status](https://github.com/vuejs/core/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/vuejs/core/actions/workflows/ci.yml)
+## Vue3 源码解读
 
-## Getting Started
+Vue3 源码解读基于 vuejs/core@3.2.31 进行。和 [Vue2](https://github.com/liyongning/Vue) 一样，会对源码进行详细解读，欢迎大家 Star。
 
-Please follow the documentation at [vuejs.org](https://vuejs.org/)!
+和 Vue2 一样，Vue3 也会有配套的文章和视频，带着大家一步步的解读源码。
 
-## Sponsors
+## 为什么需要配套文章和视频
 
-Vue.js is an MIT-licensed open source project with its ongoing development made possible entirely by the support of these awesome [backers](https://github.com/vuejs/core/blob/main/BACKERS.md). If you'd like to join them, please consider [ sponsor Vue's development](https://vuejs.org/sponsor/).
+虽然源码中加了详细注释，但是却给不了一个清晰的阅读思路，但是文章和视频是循序渐进，按照一个清晰的思路带着大家一步步啃食框架的源码。
 
-<p align="center">
-  <a target="_blank" href="https://vuejs.org/sponsor/">
-    <img alt="sponsors" src="https://sponsors.vuejs.org/sponsors.svg">
-  </a>
-</p>
+## 目前进度
 
-## Questions
+源码阅读目前正在筹备中，仓库也会陆续更新，欢迎 Star。如果你等不及，也可以先看 Vue2 的源码解读，仓库、配套文章、视频都有。
 
-For questions and support please use [the official forum](https://forum.vuejs.org) or [community chat](https://chat.vuejs.org/). The issue list of this repo is **exclusively** for bug reports and feature requests.
+## 链接
 
-## Issues
+* [github 主页](https://github.com/liyongning)，有各大社区的主页链接，文章和视频会优先发布在微信公众号，欢迎关注
 
-Please make sure to respect issue requirements and use [the new issue helper](https://new-issue.vuejs.org/) when opening an issue. Issues not conforming to the guidelines may be closed immediately.
+* [Vue2 源码解读仓库](https://github.com/liyongning/vue)
 
-## Stay In Touch
+* 手写 Vue2
 
-- [Twitter](https://twitter.com/vuejs)
-- [Blog](https://blog.vuejs.org/)
-- [Job Board](https://vuejobs.com/?ref=vuejs)
+  * [Lyn-Vue-Template](https://github.com/liyongning/Lyn-Vue-Template)
 
-## Contribution
+  * [Lyn-Vue-DOM](https://github.com/liyongning/Lyn-Vue-DOM)
 
-Please make sure to read the [Contributing Guide](https://github.com/vuejs/core/blob/main/.github/contributing.md) before making a pull request. If you have a Vue-related project/component/tool, add it with a pull request to [this curated list](https://github.com/vuejs/awesome-vue)!
-
-Thank you to all the people who already contributed to Vue!
-
-<a href="https://github.com/vuejs/core/graphs/contributors"><img src="https://opencollective.com/vuejs/contributors.svg?width=890" /></a>
-
-## License
-
-[MIT](https://opensource.org/licenses/MIT)
-
-Copyright (c) 2013-present, Yuxi (Evan) You
+* [博客仓库](https://github.com/liyongning/blog)，欢迎 Star

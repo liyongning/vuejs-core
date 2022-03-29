@@ -174,35 +174,57 @@ export type CreateAppFunction<HostElement> = (
 
 let uid = 0
 
+/**
+ * 返回 createApp 方法，即创建应用实例时执行的 createApp 方法 
+ */
 export function createAppAPI<HostElement>(
   render: RootRenderFunction,
   hydrate?: RootHydrateFunction
 ): CreateAppFunction<HostElement> {
+  /**
+   * 创建应用实例
+   * @param rootComponent 根组件选项
+   * @param rootProps 传递给 根组件 props 选项的 prop 对象
+   */
   return function createApp(rootComponent, rootProps = null) {
+    // 根组件的 prop 对象必须是一个对象
     if (rootProps != null && !isObject(rootProps)) {
       __DEV__ && warn(`root props passed to app.mount() must be an object.`)
       rootProps = null
     }
 
+    // 创建应用上下文
     const context = createAppContext()
+    // 存放已经安装的插件集合
     const installedPlugins = new Set()
 
+    // 标识是否已经挂载
     let isMounted = false
 
+    // 初始化应用实例对象
     const app: App = (context.app = {
       _uid: uid++,
+      // 根组件选项
       _component: rootComponent as ConcreteComponent,
+      // 根组件的 prop 数据
       _props: rootProps,
+      // 选择器
       _container: null,
+      // 上下文对象
       _context: context,
+      // 实例
       _instance: null,
 
+      // Vue 版本信息
       version,
 
+      // 获取应用配置
       get config() {
         return context.config
       },
 
+      // 应用配置不可直接通过 app.config = xxx 的方式修改
+      // 只能通过官方提供的相应方法修改
       set config(v) {
         if (__DEV__) {
           warn(
@@ -211,6 +233,12 @@ export function createAppAPI<HostElement>(
         }
       },
 
+      /**
+       * 以下方法对应 Vue2 中的全局 API，现在这些 API 在 Vue3 中移到了应用实例上，避免了不同应用之间的数据污染
+       * 每个方法都返回应用实例本身，所以支持链式调用
+       */
+
+      // 注册插件
       use(plugin: Plugin, ...options: any[]) {
         if (installedPlugins.has(plugin)) {
           __DEV__ && warn(`Plugin has already been applied to target app.`)
@@ -229,6 +257,7 @@ export function createAppAPI<HostElement>(
         return app
       },
 
+      // 混入数据
       mixin(mixin: ComponentOptions) {
         if (__FEATURE_OPTIONS_API__) {
           if (!context.mixins.includes(mixin)) {
@@ -245,6 +274,7 @@ export function createAppAPI<HostElement>(
         return app
       },
 
+      // 注册组件
       component(name: string, component?: Component): any {
         if (__DEV__) {
           validateComponentName(name, context.config)
@@ -259,6 +289,7 @@ export function createAppAPI<HostElement>(
         return app
       },
 
+      // 注册指令
       directive(name: string, directive?: Directive) {
         if (__DEV__) {
           validateDirectiveName(name)
@@ -274,18 +305,27 @@ export function createAppAPI<HostElement>(
         return app
       },
 
+      /**
+       * 挂载应用
+       * @param rootContainer 选择器
+       * @param isHydrate 是否为同构渲染
+       * @param isSVG 
+       */
       mount(
         rootContainer: HostElement,
         isHydrate?: boolean,
         isSVG?: boolean
       ): any {
+        // 如果没有挂载，则进行 挂载
         if (!isMounted) {
+          // 创建根组件的 vnode 对象，就是一个普通对象，将传进去的两个参数分别放到了 vnode.type 和 vnode.props 上了
           const vnode = createVNode(
             rootComponent as ConcreteComponent,
             rootProps
           )
           // store app context on the root VNode.
           // this will be set on the root instance on initial mount.
+          // 在 vnode 对象上存储 app 上下文实例
           vnode.appContext = context
 
           // HMR root reload
@@ -298,9 +338,12 @@ export function createAppAPI<HostElement>(
           if (isHydrate && hydrate) {
             hydrate(vnode as VNode<Node, Element>, rootContainer as any)
           } else {
+            // 将 vnode 渲染为 DOM 元素，这一步之后在页面上就能看到具体的内容了
             render(vnode, rootContainer, isSVG)
           }
+          // 标识已挂载
           isMounted = true
+          // 在 app 实例上设置挂载点
           app._container = rootContainer
           // for devtools and telemetry
           ;(rootContainer as any).__vue_app__ = app
@@ -310,6 +353,8 @@ export function createAppAPI<HostElement>(
             devtoolsInitApp(app, version)
           }
 
+          // 通过 expose 选项 或 expose API，限制组件实例对外暴露的属性
+          // 默认外部通过组件实例获取到的数据和组件内部是一样的，但是可以通过 expose 可以做限制
           return getExposeProxy(vnode.component!) || vnode.component!.proxy
         } else if (__DEV__) {
           warn(
@@ -321,6 +366,7 @@ export function createAppAPI<HostElement>(
         }
       },
 
+      // 卸载应用
       unmount() {
         if (isMounted) {
           render(null, app._container)
@@ -334,6 +380,7 @@ export function createAppAPI<HostElement>(
         }
       },
 
+      // 全局注入的数据，不可与组合式 API 的 provide 混淆
       provide(key, value) {
         if (__DEV__ && (key as string | symbol) in context.provides) {
           warn(

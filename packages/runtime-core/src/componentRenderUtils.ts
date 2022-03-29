@@ -38,6 +38,7 @@ export function markAttrsAccessed() {
   accessedAttrs = true
 }
 
+// 执行组件的渲染函数（包括函数式组件），得到组件 vnode
 export function renderComponentRoot(
   instance: ComponentInternalInstance
 ): VNode {
@@ -61,13 +62,17 @@ export function renderComponentRoot(
 
   let result
   let fallthroughAttrs
+  // 设置当前正在渲染的组件实例，并记录上一个组件实例
   const prev = setCurrentRenderingInstance(instance)
   if (__DEV__) {
     accessedAttrs = false
   }
 
+  // 有状态组件执行 render 函数，得到 vnode
+  // 无状态组件，执行函数，得到 vnode
   try {
     if (vnode.shapeFlag & ShapeFlags.STATEFUL_COMPONENT) {
+      // 有状态组件，执行组件的 render 函数，得到 组件的 vnode
       // withProxy is a proxy with a different `has` trap only for
       // runtime-compiled render functions using `with` block.
       const proxyToUse = withProxy || proxy
@@ -84,12 +89,14 @@ export function renderComponentRoot(
       )
       fallthroughAttrs = attrs
     } else {
+      // 无状态组件，即函数式组件
       // functional
       const render = Component as FunctionalComponent
       // in dev, mark attrs accessed if optional props (attrs === props)
       if (__DEV__ && attrs === props) {
         markAttrsAccessed()
       }
+      // 执行 函数，得到组件的 vnode
       result = normalizeVNode(
         render.length > 1
           ? render(
@@ -130,6 +137,7 @@ export function renderComponentRoot(
     ;[root, setRoot] = getChildRoot(result)
   }
 
+  // 处理组件上的属性，将属性放到 vnode 上
   if (fallthroughAttrs && inheritAttrs !== false) {
     const keys = Object.keys(fallthroughAttrs)
     const { shapeFlag } = root
@@ -234,7 +242,9 @@ export function renderComponentRoot(
     result = root
   }
 
+  // 组件 vnode 生成之后，将当前组件实例再重置为上一个实例
   setCurrentRenderingInstance(prev)
+  // 返回组件 vnode
   return result
 }
 
