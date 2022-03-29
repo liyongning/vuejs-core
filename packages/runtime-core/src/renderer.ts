@@ -700,7 +700,7 @@ function baseCreateRenderer(
    * 4、设置该元素的众多属性，比如 class、style、事件等
    * 5、在元素添加到容器节点上之前，执行一些钩子，比如：指令的 beforeMount、transition 的 beforeEnter
    * 6、将元素添加到容器节点上，这一步完成之后在页面上就能看到该元素了
-   * 7、元素追加之后，在队列中放一个回调，负责执行一些钩子，比如：transition.enter、指令的 mounted，回调会在组件渲染函数之后执行
+   * 7、元素追加之后，通过 queuePostRenderEffect 方法在队列中放一个回调，负责执行一些钩子，比如：transition.enter、指令的 mounted，回调会在组件渲染函数之后执行
    * @param vnode 需要被挂载元素的 vnode
    * @param container 容器元素
    * @param anchor 参考元素
@@ -828,7 +828,7 @@ function baseCreateRenderer(
     if (dirs) {
       invokeDirectiveHook(vnode, null, parentComponent, 'beforeMount')
     }
-    // 如果有需要执行的 transition hook，则挂载阶段执行 其 beforeEntry hook 方法
+    // 如果有需要执行的 transition hook，则挂载阶段执行 其 beforeEnter hook 方法
     // #1583 For inside suspense + suspense not resolved case, enter hook should call when suspense resolved
     // #1689 For inside suspense + suspense resolved case, just call it
     const needCallTransitionHooks =
@@ -1411,7 +1411,7 @@ function baseCreateRenderer(
       ;(instance.ctx as KeepAliveContext).renderer = internals
     }
 
-    // 处理数据响应式的入口，比如：prop、setup、data 等众多配置项
+    // 处理数据响应式的入口，比如：props、setup、data 等众多配置项
     // resolve props and slots for setup context
     if (!(__COMPAT__ && compatMountInstance)) {
       if (__DEV__) {
@@ -1437,7 +1437,7 @@ function baseCreateRenderer(
       return
     }
 
-    // 设置渲染副作用，负责初始化挂载和后续更新（当组件响应式数据更新后，出发组件更新函数重新执行）
+    // 设置渲染副作用，负责初始化挂载和后续更新（当组件响应式数据更新后，触发组件更新函数重新执行）
     setupRenderEffect(
       instance,
       initialVNode,
