@@ -150,20 +150,33 @@ type NormalizedProp =
 export type NormalizedProps = Record<string, NormalizedProp>
 export type NormalizedPropsOptions = [NormalizedProps, string[]] | []
 
+/**
+ * 处理组件的 props 配置和 非 props 和 emits 声明的属性，分别赋值给 instance.props 和 instance.attrs
+ *  将 props 配置中的属性和其对应的值（默认值 or 实际接收的值）设置到 instance.props 对象上，非服务端渲染时 instance.props 是浅响应式的
+ *  将 非 props 和 emits 声明的属性，设置到 instance.attrs 对象上
+ * @param instance 组件实例
+ * @param rawProps 使用组件时，在组件上设置的众多属性组成的对象
+ * @param isStateful 是否为有状态组件
+ * @param isSSR 是否为服务端渲染
+ */
 export function initProps(
   instance: ComponentInternalInstance,
   rawProps: Data | null,
   isStateful: number, // result of bitwise flag comparison
   isSSR = false
 ) {
+  // 存储组件的 props 属性
   const props: Data = {}
+  // 除 prop 外的其它属性
   const attrs: Data = {}
   def(attrs, InternalObjectKey, 1)
 
   instance.propsDefaults = Object.create(null)
 
+  // 处理组件的属性 props 和 attrs
   setFullProps(instance, rawProps, props, attrs)
 
+  // 确保组件 props 配置中声明的属性都存在于 props 对象中，防止异常情况
   // ensure all declared prop keys are present
   for (const key in instance.propsOptions[0]) {
     if (!(key in props)) {
@@ -177,9 +190,10 @@ export function initProps(
   }
 
   if (isStateful) {
-    // stateful
+    // stateful，有状态组件，如果是服务端渲染，将 props 对象直接赋值给 instance.props，否则对 props 做一个浅响应设置
     instance.props = isSSR ? props : shallowReactive(props)
   } else {
+    // 无状态组件，即函数式组件
     if (!instance.type.props) {
       // functional w/ optional props, props === attrs
       instance.props = attrs
@@ -188,6 +202,7 @@ export function initProps(
       instance.props = props
     }
   }
+  // 将 attrs 对象赋值给 instance.attrs
   instance.attrs = attrs
 }
 
@@ -325,22 +340,40 @@ export function updateProps(
   }
 }
 
+/**
+ * 处理组件的属性 props 和 attrs
+ *  设置组件 props 配置项上的各属性到 props 对象上，值为使用组件时提供的值，如果没提供，则使用默认值
+ *  如果属性为非 props 和 emits 声明的属性，则将属性和值添加到 attrs 对象上
+ * @param instance 组件实例
+ * @param rawProps 由组件节点上的属性组成的对象
+ * @param props 组件的 props 对象
+ * @param attrs 非 props 和 emits 声明的属性组成的对象
+ * @returns 
+ */
 function setFullProps(
   instance: ComponentInternalInstance,
   rawProps: Data | null,
   props: Data,
   attrs: Data
 ) {
+  // 组件的 props 配置项，needCastKeys 是 props 配置中设置了默认值的 key 组成的数组
   const [options, needCastKeys] = instance.propsOptions
+  // 标识 attrs 对象发生更改了
   let hasAttrsChanged = false
   let rawCastValues: Data | undefined
+
+  // 遍历组件上的属性对象
+  // 设置组件 props 配置项上的各属性到 props 对象上，值为使用组件时提供的值，如果没提供，则使用默认值
+  // 如果属性为非 props 和 emits 声明的属性，则将属性和值添加到 attrs 对象上
   if (rawProps) {
     for (let key in rawProps) {
+      // 不处理保留属性
       // key, ref are reserved and never passed down
       if (isReservedProp(key)) {
         continue
       }
 
+      // 兼容（Vue2）模式
       if (__COMPAT__) {
         if (key.startsWith('onHook:')) {
           softAssertCompatEnabled(
@@ -354,17 +387,28 @@ function setFullProps(
         }
       }
 
+      /**
+       * 
+       * 将 prop 配置的相关属性和值添加到 props 对象上
+       * 非 prop 配置和非 emits 选项中声明的属性和值添加到 attrs 对象上
+       */
+      // 获取属性实际得到的值，即从父组件传递下来的值
       const value = rawProps[key]
+      // prop 配置中 key 在规范化处理过程中会被转换为 驼峰 形势，所以这里在做 连字符形势 -> 驼峰形势的转换
       // prop option names are camelized during normalization, so to support
       // kebab -> camel conversion here we need to camelize the key.
       let camelKey
       if (options && hasOwn(options, (camelKey = camelize(key)))) {
+        // 如果组件的 props 配置（options）中存在该属性
         if (!needCastKeys || !needCastKeys.includes(camelKey)) {
+          // 如果该属性没有提供默认值，则 props[key] = 组件外部传递下来的值
           props[camelKey] = value
         } else {
+          // 如果属性提供了默认值，则设置 rawCastValues 对象 = { key: value }
           ;(rawCastValues || (rawCastValues = {}))[camelKey] = value
         }
       } else if (!isEmitListener(instance.emitsOptions, key)) {
+        // 如果属性也不是 emits 选项声明的事件，则将属性和对应的值放到 attrs 对象中
         // Any non-declared (either as a prop or an emitted event) props are put
         // into a separate `attrs` object for spreading. Make sure to preserve
         // original key casing
@@ -383,11 +427,18 @@ function setFullProps(
     }
   }
 
+  /**
+   * 如果 props 配置有提供默认值的属性
+   */
   if (needCastKeys) {
+    // 已经处理过的 props 对象
     const rawCurrentProps = toRaw(props)
+    // { key: 组件外部实际传下来的值 }，也有可能是空对象，比如属性提供了默认值，组件使用时没有给属性传递值
     const castValues = rawCastValues || EMPTY_OBJ
+    // 遍历这些提供了默认值的属性组成的数组
     for (let i = 0; i < needCastKeys.length; i++) {
       const key = needCastKeys[i]
+      // 处理设置了默认值的 props 属性，且组件在使用时未设置该属性
       props[key] = resolvePropValue(
         options!,
         rawCurrentProps,
@@ -402,6 +453,18 @@ function setFullProps(
   return hasAttrsChanged
 }
 
+/**
+ * 处理设置了默认值的 props 属性，且组件在使用时未设置该属性
+ *  如果使用组件时未设置该属性，则使用属性的默认值（如果有）
+ *  如果属性是布尔值，且没有设置默认值，则值默认为 false，否则为 true
+ * @param options 组件 props 配置项
+ * @param props 已经经过处理得到的 props 对象
+ * @param key 属性名
+ * @param value 属性对应的值，该值要不没空，要不就是从组件上传递下来的实际的值
+ * @param instance 组件实例
+ * @param isAbsent 是否缺省
+ * @returns 
+ */
 function resolvePropValue(
   options: NormalizedProps,
   props: Data,
@@ -410,13 +473,17 @@ function resolvePropValue(
   instance: ComponentInternalInstance,
   isAbsent: boolean
 ) {
+  // 指定属性的 props 配置
   const opt = options[key]
   if (opt != null) {
+    // 属性是否有 默认值
     const hasDefault = hasOwn(opt, 'default')
-    // default values
+    // default values，有 默认值，且组件在使用时没有设置该属性，value = 默认值
     if (hasDefault && value === undefined) {
       const defaultValue = opt.default
       if (opt.type !== Function && isFunction(defaultValue)) {
+        // 如果属性的类型不是 函数，但提供的默认值是函数
+        // 则执行函数，获取函数的返回值作为真正的默认值
         const { propsDefaults } = instance
         if (key in propsDefaults) {
           value = propsDefaults[key]
@@ -432,10 +499,11 @@ function resolvePropValue(
           unsetCurrentInstance()
         }
       } else {
+        // 直接使用 默认值
         value = defaultValue
       }
     }
-    // boolean casting
+    // boolean casting，属性的类型为 boolean，如果未提供该属性的值且没有设置默认值，则值为 false，否则为 true
     if (opt[BooleanFlags.shouldCast]) {
       if (isAbsent && !hasDefault) {
         value = false

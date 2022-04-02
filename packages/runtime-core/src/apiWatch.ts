@@ -418,8 +418,16 @@ export function instanceWatch(
   return res
 }
 
+/**
+ * 返回函数作为 watcher 的 getter，函数最终返回 this.path 对象
+ * @param ctx this
+ * @param path 对象 key 路径，k1.kk1
+ * @returns 函数，作为 watcher 的 getter
+ */
 export function createPathGetter(ctx: any, path: string) {
+  // 将 key 按照 . 分割为数组，[k1, kk1]
   const segments = path.split('.')
+  // 返回函数，作为 watcher 的 getter，函数返回 cur.k1.kk1 对象
   return () => {
     let cur = ctx
     for (let i = 0; i < segments.length && cur; i++) {

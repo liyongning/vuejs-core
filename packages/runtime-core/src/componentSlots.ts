@@ -126,6 +126,11 @@ const normalizeVNodeSlots = (
   instance.slots.default = () => normalized
 }
 
+/**
+ * 将插槽的 vnode 赋值给 instance.slots
+ * @param instance 组件实例
+ * @param children 插槽内容
+ */
 export const initSlots = (
   instance: ComponentInternalInstance,
   children: VNodeNormalizedChildren

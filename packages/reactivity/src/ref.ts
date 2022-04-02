@@ -124,10 +124,18 @@ export function triggerRef(ref: Ref) {
   triggerRefValue(ref, __DEV__ ? ref.value : void 0)
 }
 
+/**
+ * 如果参数是 ref，则返回内部值，否则返回参数本身
+ */
 export function unref<T>(ref: T | Ref<T>): T {
   return isRef(ref) ? (ref.value as any) : ref
 }
 
+/**
+ * 代理 ref 值的 get 和 set 操作，这里其实就是一个针对 ref 数据的语法糖
+ *  get: 如果访问的属性值是 ref，则返回内部值，即 ref.value，否则返回值本身
+ *  set: 如果旧值是 ref，则将新值设置给 ref.value，否则，直接赋值给 ref 本身
+ */
 const shallowUnwrapHandlers: ProxyHandler<any> = {
   get: (target, key, receiver) => unref(Reflect.get(target, key, receiver)),
   set: (target, key, value, receiver) => {
@@ -141,6 +149,10 @@ const shallowUnwrapHandlers: ProxyHandler<any> = {
   }
 }
 
+/**
+ * 创建对象代理，拦截对象的 get 和 set 操作。 
+ * 如果属性值时 ref，则操作 ref.value，否则直接操作值本身
+ */
 export function proxyRefs<T extends object>(
   objectWithRefs: T
 ): ShallowUnwrapRef<T> {

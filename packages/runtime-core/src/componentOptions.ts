@@ -541,20 +541,32 @@ function createDuplicateChecker() {
 
 export let shouldCacheAccess = true
 
+/**
+ * 1、处理组件的 options 配置，每个配置最终还是调用了相应的组合式 API，比如 data => reactive、computed => computed，
+ * 并将相应的数据都代理到 this 上下文上
+ * 2、在处理配置项之前调用 beforeCreate 生命周期钩子，处理之后调用 created
+ * 3、注册 created 之后的所有生命周期钩子到组件实例对应的属性（钩子函数简写）上
+ */
 export function applyOptions(instance: ComponentInternalInstance) {
+  // 解析并合并(mixins、继承而来的配置、全局配置)选项，然后将合并后的选项缓存到组件实例上，后续就不需要再次处理了
   const options = resolveMergedOptions(instance)
+  // 前面处理过的 instance.proxy，代理了 props、setupState、data、context 的操作
   const publicThis = instance.proxy! as any
+  // 上下文对象
   const ctx = instance.ctx
 
+  // 在初始化 inejct、methods、data 等状态数据期间，不需要缓存代理上的属性访问
   // do not cache property access on public proxy during state initialization
   shouldCacheAccess = false
 
+  // 首先执行 beforeCreate 生命周期钩子
   // call beforeCreate first before accessing other options since
   // the hook may mutate resolved options (#2791)
   if (options.beforeCreate) {
     callHook(options.beforeCreate, instance, LifecycleHooks.BEFORE_CREATE)
   }
 
+  // 从配置中解析众多选项，比如：状态、生命周期方法、publick api、资源等配置项
   const {
     // state
     data: dataOptions,
@@ -608,7 +620,9 @@ export function applyOptions(instance: ComponentInternalInstance) {
   // - computed
   // - watch (deferred since it relies on `this` access)
 
+  // inject 选项
   if (injectOptions) {
+    // 解析 inject 选项，将选项上的 key 和 对应的 value 设置到上下文对象上，即 ctx[injectKey] = injectVal
     resolveInjections(
       injectOptions,
       ctx,
@@ -617,7 +631,10 @@ export function applyOptions(instance: ComponentInternalInstance) {
     )
   }
 
+  // methods 选项
   if (methods) {
+    // 遍历 methods 对象，将对象上的方法设置到上下文对象上，以方法名为 key，方法为 value，
+    // 并将 publicThis（instance.proxy => this) 作为方法的执行上下文绑定到方法上
     for (const key in methods) {
       const methodHandler = (methods as MethodOptions)[key]
       if (isFunction(methodHandler)) {
@@ -646,13 +663,16 @@ export function applyOptions(instance: ComponentInternalInstance) {
     }
   }
 
+  // data 选项
   if (dataOptions) {
+    // 执行 data 函数，使用组合式 API reactive 对 data 函数的返回对象做响应式处理
     if (__DEV__ && !isFunction(dataOptions)) {
       warn(
         `The data option must be a function. ` +
           `Plain object usage is no longer supported.`
       )
     }
+    // 执行 data 函数，拿到返回的结果（对象）
     const data = dataOptions.call(publicThis, publicThis)
     if (__DEV__ && isPromise(data)) {
       warn(
@@ -664,6 +684,7 @@ export function applyOptions(instance: ComponentInternalInstance) {
     if (!isObject(data)) {
       __DEV__ && warn(`data() should return an object.`)
     } else {
+      // 调用组合式 API rective 对 data 选项返回的对象做响应式处理，将返回的 proxy 代理赋值给 instance.data
       instance.data = reactive(data)
       if (__DEV__) {
         for (const key in data) {
@@ -682,20 +703,29 @@ export function applyOptions(instance: ComponentInternalInstance) {
     }
   }
 
+  // 到这里状态初始化的事情就完成了，接下来的数据访问开始缓存
   // state initialization complete at this point - start caching access
   shouldCacheAccess = true
 
+  // computed 选项
   if (computedOptions) {
+    // 遍历 computed 选项，获取计算属性的 get、set 方法，然后调用组合式 API computed 处理计算属性，
+    // 将计算属性代理到上下文，支持通过 this.computedKey 的方式访问，并将返回的 ref 值做了解包，同 unref 语法糖
     for (const key in computedOptions) {
+      // 指定的计算属性配置
       const opt = (computedOptions as ComputedOptions)[key]
+      // 获取计算属性的 get 方法
       const get = isFunction(opt)
+        // 如果 opt 本身就是函数，则将函数作为 get
         ? opt.bind(publicThis, publicThis)
+        // opt 不是函数，则作为对象，看有没有 get 方法，有则赋值给 get
         : isFunction(opt.get)
         ? opt.get.bind(publicThis, publicThis)
         : NOOP
       if (__DEV__ && get === NOOP) {
         warn(`Computed property "${key}" has no getter.`)
       }
+      // 设置计算属性的 set 方法，思路同 get 方法一样
       const set =
         !isFunction(opt) && isFunction(opt.set)
           ? opt.set.bind(publicThis)
@@ -706,10 +736,12 @@ export function applyOptions(instance: ComponentInternalInstance) {
               )
             }
           : NOOP
+      // 拿到了计算属性的 get 和 set，调用组合式 API computed 处理计算属性，返回一个 Ref 值
       const c = computed({
         get,
         set
       })
+      // 代理计算属性到上下文，支持通过 this.computedKey 的方式访问，访问的时候对 ref 值做了解包，同 unref 语法糖
       Object.defineProperty(ctx, key, {
         enumerable: true,
         configurable: true,
@@ -722,32 +754,46 @@ export function applyOptions(instance: ComponentInternalInstance) {
     }
   }
 
+  // watch 选项
   if (watchOptions) {
+    // 遍历 watch 对象，创建返回值为 this.key 的 getter 函数，然后解析 watch[key] 配置，调用组合式 API watch 创建 watcher
     for (const key in watchOptions) {
       createWatcher(watchOptions[key], ctx, publicThis, key)
     }
   }
 
+  // provide 选项
   if (provideOptions) {
+    // 获取 provide 配置对象
     const provides = isFunction(provideOptions)
+      // provide 为函数，则执行返回，拿到返回值
       ? provideOptions.call(publicThis)
       : provideOptions
+    // 遍历 provide 对象，调用组合式 API provide，将 key、value 放到 currentIns.provides 对象上，对象以 currentIns.parent.provides 为原型对象
     Reflect.ownKeys(provides).forEach(key => {
       provide(key, provides[key])
     })
   }
 
+  // 执行 created 生命周期钩子
   if (created) {
     callHook(created, instance, LifecycleHooks.CREATED)
   }
 
+  /**
+   * 将组件所有生命周期钩子放到组件实例上的对应属性中，比如 beforeMount 钩子放到 instance.bm 数组中，然后在正确的时间去调用
+   * @param register 对应钩子的注册函数，比如 beforeMount 钩子的注册函数
+   * @param hook 组件生命周期钩子
+   */
   function registerLifecycleHook(
     register: Function,
     hook?: Function | Function[]
   ) {
     if (isArray(hook)) {
+      // 钩子为数组，则遍历数组，依次注册
       hook.forEach(_hook => register(_hook.bind(publicThis)))
     } else if (hook) {
+      // 给钩子函数绑定 this
       register((hook as Function).bind(publicThis))
     }
   }
@@ -780,8 +826,10 @@ export function applyOptions(instance: ComponentInternalInstance) {
     }
   }
 
+  // expose 选项
   if (isArray(expose)) {
     if (expose.length) {
+      // 遍历 expose 数组，通过 Object.defineProperty 代理每个属性到 instance.exposed 对象
       const exposed = instance.exposed || (instance.exposed = {})
       expose.forEach(key => {
         Object.defineProperty(exposed, key, {
@@ -794,15 +842,19 @@ export function applyOptions(instance: ComponentInternalInstance) {
     }
   }
 
+  // render 选项，如果到这里 instance.render 还不存在，则将配置项上的 render 赋值给 instance.render
+  // setup 返回的 render 函数、编译器生成的 render 函数、options render 选项优先级依次递减
   // options that are handled when creating the instance but also need to be
   // applied from mixins
   if (render && instance.render === NOOP) {
     instance.render = render as InternalRenderFunction
   }
+  // 继承而来的属性
   if (inheritAttrs != null) {
     instance.inheritAttrs = inheritAttrs
   }
 
+  // 将 components、directives、filters 选项分别设置到 instance 实例上
   // asset options.
   if (components) instance.components = components as any
   if (directives) instance.directives = directives
@@ -815,19 +867,31 @@ export function applyOptions(instance: ComponentInternalInstance) {
   }
 }
 
+/**
+ * 解析 inject 选项，将选项上的 key 以及对应的 value 设置到上下文对象上，即 ctx[injectKey] = injectVal
+ * @param injectOptions inject 选项
+ * @param ctx 上下文，即 this
+ * @param checkDuplicateProperties 
+ * @param unwrapRef 
+ */
 export function resolveInjections(
   injectOptions: ComponentInjectOptions,
   ctx: any,
   checkDuplicateProperties = NOOP as any,
   unwrapRef = false
 ) {
+  // 如果 inject 选项时数组，则格式化为对象形式
   if (isArray(injectOptions)) {
     injectOptions = normalizeInject(injectOptions)!
   }
+  // 遍历 inject 对象
   for (const key in injectOptions) {
+    // key 对应的 value 对象
     const opt = (injectOptions as ObjectInjectOptions)[key]
     let injected: unknown
+    // 从组件的父组件的 provides 对象上获取 injectOpt[key] 对应的值，没有则使用 inject 选项提供的默认值
     if (isObject(opt)) {
+      // opt 为对象
       if ('default' in opt) {
         injected = inject(
           opt.from || key,
@@ -840,6 +904,9 @@ export function resolveInjections(
     } else {
       injected = inject(opt)
     }
+    // 将 inject 配置的 key 和 对应的 value 赋值给 ctx（上下文），即 ctx[key] = injectedVal
+    // 如果得到的 injectOpt[key] 的值为 ref 值，则将 ref.value 赋值给 ctx[key]，
+    // inejct 值不建议使用 ref 值，Vue3.3 即将移除这段代码
     if (isRef(injected)) {
       // TODO remove the check in 3.3
       if (unwrapRef) {
@@ -884,31 +951,51 @@ function callHook(
   )
 }
 
+/**
+ * 创建返回值为 this.key 的 getter 函数，然后解析 watch[key] 配置，调用组合式 API watch 创建 watcher
+ * @param raw watch[key] 的配置项
+ * @param ctx 上下文
+ * @param publicThis 上下文的 代理 
+ * @param key watch 选项的 key
+ */
 export function createWatcher(
   raw: ComponentWatchOptionItem,
   ctx: Data,
   publicThis: ComponentPublicInstance,
   key: string
 ) {
+  // 创建 getter 函数，函数的返回值为 this.key
   const getter = key.includes('.')
+    // key 为嵌套属性，比如 k1.kk1
     ? createPathGetter(publicThis, key)
+    // 普通 key 属性
     : () => (publicThis as any)[key]
   if (isString(raw)) {
+    // raw 是 string，说明 watcher 的形式是：{ key: 'methodName' }
+    // 获取方法
     const handler = ctx[raw]
+    // ctx[raw] 必须为函数，否则报异常
     if (isFunction(handler)) {
+      // 拿到了 getter 函数和回调函数，调用组合式 API watch 进行监听
       watch(getter, handler as WatchCallback)
     } else if (__DEV__) {
       warn(`Invalid watch handler specified by key "${raw}"`, handler)
     }
   } else if (isFunction(raw)) {
+    // raw 本身是函数，则直接调用组合式 API watch
     watch(getter, raw.bind(publicThis))
   } else if (isObject(raw)) {
+    // raw 是对象
     if (isArray(raw)) {
+      // raw 是数组，则递归调用 createWatcher，依次处理数组的每一项
       raw.forEach(r => createWatcher(r, ctx, publicThis, key))
     } else {
+      // raw 就是一 普通对象
+      // 获取 handler 函数
       const handler = isFunction(raw.handler)
         ? raw.handler.bind(publicThis)
         : (ctx[raw.handler] as WatchCallback)
+      // 调用组合式 API watch 创建 watcher
       if (isFunction(handler)) {
         watch(getter, handler, raw)
       } else if (__DEV__) {

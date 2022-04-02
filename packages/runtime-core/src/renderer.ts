@@ -1362,7 +1362,7 @@ function baseCreateRenderer(
    * 挂载组件
    * 1、创建组件实例，就一个大对象，组件的相关属性都在上面
    * 2、如果组件被 keep-alive 包裹，则注入内部渲染器，keep-alive 有自己的渲染逻辑
-   * 3、处理数据响应式
+   * 3、处理组件的所有 options 配置
    * 4、异步的 setup 和 suspense
    * 5、设置渲染副作用，完成组件的初始挂载 和 后续响应式更新的设置
    * @param initialVNode 组件 vnode
@@ -1411,7 +1411,8 @@ function baseCreateRenderer(
       ;(instance.ctx as KeepAliveContext).renderer = internals
     }
 
-    // 处理数据响应式的入口，比如：props、setup、data 等众多配置项
+    // 处理组件的所有 options 配置，比如 props、setup、inject、data、methods、computed、watch、provide 生命周期等
+    // 也可以算是响应式 API 的一个入口
     // resolve props and slots for setup context
     if (!(__COMPAT__ && compatMountInstance)) {
       if (__DEV__) {

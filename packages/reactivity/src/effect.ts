@@ -199,12 +199,22 @@ export function resetTracking() {
   shouldTrack = last === undefined ? true : last
 }
 
+/**
+ * 依赖收集，收集 target[key] 依赖的副作用，并将依赖集合在当前激活的副作用上也记录一份，形成双向记录
+ * @param target 目标对象
+ * @param type 操作类型
+ * @param key 属性
+ */
 export function track(target: object, type: TrackOpTypes, key: unknown) {
+  // 允许跟踪 && 当前有激活的副作用实例
   if (shouldTrack && activeEffect) {
+    // 获取目标对象的依赖对象
     let depsMap = targetMap.get(target)
+    // 如果该对象没有收集过依赖对象，则创建
     if (!depsMap) {
       targetMap.set(target, (depsMap = new Map()))
     }
+    // 获取 target[key] 对应的 依赖集合，如果没有则创建
     let dep = depsMap.get(key)
     if (!dep) {
       depsMap.set(key, (dep = createDep()))
@@ -214,10 +224,17 @@ export function track(target: object, type: TrackOpTypes, key: unknown) {
       ? { effect: activeEffect, target, type, key }
       : undefined
 
+    // 跟踪副作用，依赖集合和副作用实例相关记录保存
     trackEffects(dep, eventInfo)
   }
 }
 
+/**
+ * 将当前激活的副作用记录为 target[key] 的依赖
+ * 同样，副作用实例也记录当前依赖，形成相互记录的关系
+ * @param dep target[key] 的依赖集合
+ * @param debuggerEventExtraInfo 
+ */
 export function trackEffects(
   dep: Dep,
   debuggerEventExtraInfo?: DebuggerEventExtraInfo
@@ -233,8 +250,11 @@ export function trackEffects(
     shouldTrack = !dep.has(activeEffect!)
   }
 
+  // 收集当前激活的副作用为 target[key] 的依赖之一
   if (shouldTrack) {
+    // 依赖收集副作用
     dep.add(activeEffect!)
+    // 将当前依赖同样设置到副作用实例上，形成相互记录的关系
     activeEffect!.deps.push(dep)
     if (__DEV__ && activeEffect!.onTrack) {
       activeEffect!.onTrack(

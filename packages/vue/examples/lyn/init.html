@@ -10,48 +10,90 @@
 
 <body>
     <div id="app">
-        <p>{{ pData }}</p>
         <p>{{ bar }}</p>
-        <p>{{ foo }}</p>
-        <child-comp><div>child-content</div><div>test</div></child-comp>
+        <p>counter: {{ counter }}</p>
+        <child-comp :foo-t="testObj" :bar-t="bar">
+            <div>slot content</div>
+        </child-comp>
     </div>
 
     <script src="../../dist/vue.global.js"></script>
     <script>
-        const { createApp } = Vue
+        const { createApp, ref, onMounted, watch } = Vue
         const app = createApp({
-            prop: {
-                pData: String
-            },
             setup() {
+                const counter = ref(1)
+
+                onMounted(() => {
+                    // setTimeout(() => {
+                    //     counter.value++
+                    // }, 3000)
+                })
+
+                watch(counter, () => {
+                    console.log('counter watch')
+                })
+
                 return {
-                    bar: 'bar data'
+                    bar: 'bar data',
+                    counter
                 }
-            },
-            mounted() {
-                // setTimeout(() => {
-                //     this.foo = 'foo data foo data'
-                // }, 2000)
             },
             data() {
                 return {
-                    foo: 'foo data'
+                    testObj: {
+                        k1: {
+                            kk1: 'kk1 value'
+                        }
+                    }
                 }
             },
-            // expose: ['foo']
-        }, {
-            prop: {
-                pData: 'test'
-            }
+            watch: {
+                testObj: {
+                    handler() {
+                        console.log('%%%%%%%%%%', this.testObj)
+                    },
+                    deep: true
+                }
+            },
+            provide: {
+                d: 'd test'
+            },
+            // mounted() {
+            //     setTimeout(() => {
+            //         this.testObj.k1.kk1 = 'kk1 value changed'
+            //         //     console.log(this.testObj.k1.kk1)
+            //     }, 5000)
+            // }
         })
         app.component('child-comp', {
-            // template: '<div>{{ childContent }}</div>',
-            template: '<div><slot /></div>',
-            data() {
-                return {
-                    childContent: 'child component'
+            template: `
+            <div>
+                <slot />
+                <div>{{ fooT.k1.kk1 }}</div>
+                <div>{{ barT }}</div>
+                <Hello />
+            </div>`,
+            props: {
+                fooT: {
+                    type: Object,
+                },
+                barT: {
+                    type: String
                 }
-            }
+            },
+            provide: {
+                childD: 'child provide data'
+            },
+            // updated() {
+            //     console.log('T%%%%%%%%%%%%%%')
+            // }
+        })
+        app.component('Hello', {
+            template: `
+            <div>{{ d }}</div>
+            `,
+            inject: ['d']
         })
         app.mount('#app')
     </script>
