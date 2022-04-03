@@ -28,9 +28,15 @@ type RefBase<T> = {
   value: T
 }
 
+/**
+ * 为 ref 值数据副作用，在 ref.dep 集合中记录依赖自己的副作用，将来 ref 更新时，重新执行这些副作用 
+ */
 export function trackRefValue(ref: RefBase<any>) {
+  // 允许被跟踪 && 有正处于激活状态的副作用
   if (shouldTrack && activeEffect) {
+    // 获取 ref 的原始值
     ref = toRaw(ref)
+    // 为 ref 数收集副作用，在 ref.dep 集合中记录依赖自己的副作用，将来自己更新时，重新执行这些副作用
     if (__DEV__) {
       trackEffects(ref.dep || (ref.dep = createDep()), {
         target: ref,
@@ -43,7 +49,13 @@ export function trackRefValue(ref: RefBase<any>) {
   }
 }
 
+/**
+ * 触发 ref 对象的订阅者（依赖 ref 对象的副作用）重新执行
+ * @param ref ref 对象
+ * @param newVal 更新 ref 对象的新值
+ */
 export function triggerRefValue(ref: RefBase<any>, newVal?: any) {
+  // 从 ref 原始值的 dep 对象上拿到依赖自己的副作用集合
   ref = toRaw(ref)
   if (ref.dep) {
     if (__DEV__) {
@@ -54,12 +66,14 @@ export function triggerRefValue(ref: RefBase<any>, newVal?: any) {
         newValue: newVal
       })
     } else {
+      // 触发副作用：遍历副作用集合，依次触发副作用执行
       triggerEffects(ref.dep)
     }
   }
 }
 
 export function isRef<T>(r: Ref<T> | unknown): r is Ref<T>
+// 判断参数是否为 ref 值，通过 __v_isRef 标识来 判断
 export function isRef(r: any): r is Ref {
   return !!(r && r.__v_isRef === true)
 }
@@ -69,6 +83,11 @@ export function ref<T extends object>(
 ): [T] extends [Ref] ? T : Ref<UnwrapRef<T>>
 export function ref<T>(value: T): Ref<UnwrapRef<T>>
 export function ref<T = any>(): Ref<T | undefined>
+/**
+ * ref API，返回 ref 实例。ref API 主要是为了方便代理原始值，当然也可以代理对象
+ * @param value 被代理的值
+ * @returns ref 实例
+ */
 export function ref(value?: unknown) {
   return createRef(value, false)
 }
@@ -86,13 +105,29 @@ export function shallowRef(value?: unknown) {
   return createRef(value, true)
 }
 
+/**
+ * 创建 ref 实例
+ * @param rawValue 原始值
+ * @param shallow 
+ * @returns 
+ */
 function createRef(rawValue: unknown, shallow: boolean) {
+  // 如果 raValue 已经是 ref 值，则直接返回
   if (isRef(rawValue)) {
     return rawValue
   }
+  // 实例化 Ref，返回 ref 实例
   return new RefImpl(rawValue, shallow)
 }
 
+/**
+ * ref API 的响应式实现
+ *  通过 getter 和 setter 来拦截对 ref.value 的读取和设置，
+ *  读取时，收集依赖 ref 值的副作用，并返回 ref 值
+ *  设置时，更新 ref 值，并触发依赖 ref 值的副作用重新执行
+ * 如果是浅响应，原始值和对象的处理方式一样，都是将值直接赋值给 this._value，
+ * 否则对象会经有 reactive API 处理，将返回的 proxy 代理赋值给 this._value
+ */
 class RefImpl<T> {
   private _value: T
   private _rawValue: T
@@ -101,20 +136,30 @@ class RefImpl<T> {
   public readonly __v_isRef = true
 
   constructor(value: T, public readonly __v_isShallow: boolean) {
+    // 原始值
     this._rawValue = __v_isShallow ? value : toRaw(value)
+    // 如果是浅响应或值为非对象，this.__value 等于值本身，否则等于经过 reactive 转换后的响应式对象
     this._value = __v_isShallow ? value : toReactive(value)
   }
 
+  // 读取 ref.value 时触发，收集副作用并返回 this._value
   get value() {
+    // 为 ref 值收集副作用，在 ref.dep 集合中记录依赖自己的副作用，将来 ref 更新时，重新执行这些副作用 
     trackRefValue(this)
     return this._value
   }
 
+  // 设置 ref.value 时触发，更新 ref 值，并触发依赖 ref 对象的副作用重新执行
   set value(newVal) {
+    // 获取新值的原始值
     newVal = this.__v_isShallow ? newVal : toRaw(newVal)
+    // 通过 Object.is 对比新旧两个原始值，看是否发生变化，如果变了
     if (hasChanged(newVal, this._rawValue)) {
+      // 更新原始值
       this._rawValue = newVal
+      // 和初始化时一样的方式，更新 this._value
       this._value = this.__v_isShallow ? newVal : toReactive(newVal)
+      //触发 ref 对象的订阅者（依赖 ref 对象的副作用）重新执行
       triggerRefValue(this, newVal)
     }
   }

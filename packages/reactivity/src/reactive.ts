@@ -236,8 +236,15 @@ export function isProxy(value: unknown): boolean {
   return isReactive(value) || isReadonly(value)
 }
 
+/**
+ * 获取参数对应的原始值
+ *  如果参数为非原始值，则它的原始值存放在 observed.__v_raw 属性上
+ */
 export function toRaw<T>(observed: T): T {
+  // 从 observed.__v_raw 上获取 observed 的原始值
+  // const raw = observed && observed.__v_raw
   const raw = observed && (observed as Target)[ReactiveFlags.RAW]
+  // 如果 observed 含有 __v_raw 属性，则递归调用 toRaw，最终返回 observed 对应的原始值，即 observed.__v_raw
   return raw ? toRaw(raw) : observed
 }
 
@@ -246,6 +253,7 @@ export function markRaw<T extends object>(value: T): T {
   return value
 }
 
+// 如果参数为对象，则调用 reactive api 将其转化为响应式对象，并返回响应式对象，否则返回值本身
 export const toReactive = <T extends unknown>(value: T): T =>
   isObject(value) ? reactive(value) : value
 

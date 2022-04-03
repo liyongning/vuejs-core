@@ -230,9 +230,8 @@ export function track(target: object, type: TrackOpTypes, key: unknown) {
 }
 
 /**
- * 将当前激活的副作用记录为 target[key] 的依赖
- * 同样，副作用实例也记录当前依赖，形成相互记录的关系
- * @param dep target[key] 的依赖集合
+ * 为响应式数据收集副作用，相当于记录自己的订阅者，知道了有哪些副作用依赖自己，待将来自己更新时好重新去执行这些副作用
+ * @param dep 响应数据的副作用集合
  * @param debuggerEventExtraInfo 
  */
 export function trackEffects(
@@ -250,11 +249,9 @@ export function trackEffects(
     shouldTrack = !dep.has(activeEffect!)
   }
 
-  // 收集当前激活的副作用为 target[key] 的依赖之一
   if (shouldTrack) {
-    // 依赖收集副作用
+    // 为响应式数据收集副作用，相当于记录自己的订阅者，知道了有哪些副作用依赖自己，待将来自己更新时好重新去执行这些副作用
     dep.add(activeEffect!)
-    // 将当前依赖同样设置到副作用实例上，形成相互记录的关系
     activeEffect!.deps.push(dep)
     if (__DEV__ && activeEffect!.onTrack) {
       activeEffect!.onTrack(
@@ -356,19 +353,30 @@ export function trigger(
   }
 }
 
+/**
+ * 触发副作用
+ *  遍历副作用集合，如果副作用没有运行 或 允许被递归，则执行副作用，
+ *  如果副作用有调度器，则按照调度器的指示去执行，如果没有则执行副作用的 run 方法
+ * @param dep 副作用集合
+ * @param debuggerEventExtraInfo 
+ */
 export function triggerEffects(
   dep: Dep | ReactiveEffect[],
   debuggerEventExtraInfo?: DebuggerEventExtraInfo
 ) {
+  // 遍历副作用集合
   // spread into array for stabilization
   for (const effect of isArray(dep) ? dep : [...dep]) {
+    // 如果副作用没有运行 或者 副作用允许递归
     if (effect !== activeEffect || effect.allowRecurse) {
       if (__DEV__ && effect.onTrigger) {
         effect.onTrigger(extend({ effect }, debuggerEventExtraInfo))
       }
       if (effect.scheduler) {
+        // 副作用有调度器，则执行调度器，则副作用将按照调度器指示的方式执行
         effect.scheduler()
       } else {
+        // 执行副作用的 run 方法
         effect.run()
       }
     }

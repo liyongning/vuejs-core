@@ -11,10 +11,6 @@
 <body>
     <div id="app">
         <p>{{ bar }}</p>
-        <p>counter: {{ counter }}</p>
-        <child-comp :foo-t="testObj" :bar-t="bar">
-            <div>slot content</div>
-        </child-comp>
     </div>
 
     <script src="../../dist/vue.global.js"></script>
@@ -22,78 +18,16 @@
         const { createApp, ref, onMounted, watch } = Vue
         const app = createApp({
             setup() {
-                const counter = ref(1)
-
+                const bar = ref({ t: 't value' })
                 onMounted(() => {
-                    // setTimeout(() => {
-                    //     counter.value++
-                    // }, 3000)
+                    setTimeout(() => {
+                        bar.value = { t: 't value' }
+                    }, 2000)
                 })
-
-                watch(counter, () => {
-                    console.log('counter watch')
-                })
-
                 return {
-                    bar: 'bar data',
-                    counter
+                    bar
                 }
             },
-            data() {
-                return {
-                    testObj: {
-                        k1: {
-                            kk1: 'kk1 value'
-                        }
-                    }
-                }
-            },
-            watch: {
-                testObj: {
-                    handler() {
-                        console.log('%%%%%%%%%%', this.testObj)
-                    },
-                    deep: true
-                }
-            },
-            provide: {
-                d: 'd test'
-            },
-            // mounted() {
-            //     setTimeout(() => {
-            //         this.testObj.k1.kk1 = 'kk1 value changed'
-            //         //     console.log(this.testObj.k1.kk1)
-            //     }, 5000)
-            // }
-        })
-        app.component('child-comp', {
-            template: `
-            <div>
-                <slot />
-                <div>{{ fooT.k1.kk1 }}</div>
-                <div>{{ barT }}</div>
-                <Hello />
-            </div>`,
-            props: {
-                fooT: {
-                    type: Object,
-                },
-                barT: {
-                    type: String
-                }
-            },
-            provide: {
-                childD: 'child provide data'
-            },
-            // updated() {
-            //     console.log('T%%%%%%%%%%%%%%')
-            // }
-        })
-        app.component('Hello', {
-            template: `
-            <div>{{ d }}</div>
-            `,
-            inject: ['d']
         })
         app.mount('#app')
     </script>
