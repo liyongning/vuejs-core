@@ -181,26 +181,31 @@ export function stop(runner: ReactiveEffectRunner) {
   runner.effect.stop()
 }
 
+// 控制依赖收集是否进行
 export let shouldTrack = true
+// 栈，存储 shouldTrack 的上一状态
 const trackStack: boolean[] = []
 
+// 暂停依赖收集
 export function pauseTracking() {
   trackStack.push(shouldTrack)
   shouldTrack = false
 }
 
+// 允许依赖收集
 export function enableTracking() {
   trackStack.push(shouldTrack)
   shouldTrack = true
 }
 
+// 恢复 shouldTrack 到上一状态
 export function resetTracking() {
   const last = trackStack.pop()
   shouldTrack = last === undefined ? true : last
 }
 
 /**
- * 依赖收集，收集 target[key] 依赖的副作用，并将依赖集合在当前激活的副作用上也记录一份，形成双向记录
+ * 依赖收集，收集 target[key] 依赖的副作用，并将依赖集合在当前激活的副作用上也记录一份
  * @param target 目标对象
  * @param type 操作类型
  * @param key 属性
@@ -224,7 +229,7 @@ export function track(target: object, type: TrackOpTypes, key: unknown) {
       ? { effect: activeEffect, target, type, key }
       : undefined
 
-    // 跟踪副作用，依赖集合和副作用实例相关记录保存
+    // 为响应式数据收集副作用，相当于记录自己的订阅者，知道了有哪些副作用依赖自己，待将来自己更新时好重新去执行这些副作用
     trackEffects(dep, eventInfo)
   }
 }
@@ -266,6 +271,16 @@ export function trackEffects(
   }
 }
 
+/**
+ * 根据目标对象、key、操作类型，获取相关的副作用，然后触发这些副作用重新执行
+ * @param target 目标对象
+ * @param type 操作类型
+ * @param key 操作的 key（属性 or 索引）
+ * @param newValue 新值
+ * @param oldValue 旧值
+ * @param oldTarget 
+ * @returns 
+ */
 export function trigger(
   target: object,
   type: TriggerOpTypes,
@@ -274,42 +289,56 @@ export function trigger(
   oldValue?: unknown,
   oldTarget?: Map<unknown, unknown> | Set<unknown>
 ) {
+  // 获取对象的依赖映射对象，该对象以 target 的 key 为键，副作用集合为 value
   const depsMap = targetMap.get(target)
+  // 如果集合不存在，则说明从来没收集过 target 对象的依赖，直接返回
   if (!depsMap) {
     // never been tracked
     return
   }
 
+  // 存放所有将要被执行的副作用
   let deps: (Dep | undefined)[] = []
   if (type === TriggerOpTypes.CLEAR) {
+    // 集合的 clear 操作，说明是清空集合，则触发所有相关的副作用
     // collection being cleared
     // trigger all effects for target
     deps = [...depsMap.values()]
   } else if (key === 'length' && isArray(target)) {
+    // 说明修改的是数组的 length 属性，arrProxy.length = newVal
+    // 遍历数组，获取和 length 属性相关的副作用以及所有索引（key）大于等于新 length 值的相关副作用
     depsMap.forEach((dep, key) => {
       if (key === 'length' || key >= (newValue as number)) {
         deps.push(dep)
       }
     })
   } else {
+    // set、add 和 delete 操作
     // schedule runs for SET | ADD | DELETE
+    // 获取 target.key 对应的副作用集合
     if (key !== void 0) {
       deps.push(depsMap.get(key))
     }
 
+    // 收集需要触发 add、delete、Map.set 操作的迭代相关的副作用
     // also run for iteration key on ADD | DELETE | Map.SET
     switch (type) {
+      // 新增操作，获取普通对象、Map 对象、数组迭代相关的副作用
       case TriggerOpTypes.ADD:
         if (!isArray(target)) {
+          // 普通对象迭代相关的副作用
           deps.push(depsMap.get(ITERATE_KEY))
+          // Map 对象迭代相关的副作用
           if (isMap(target)) {
             deps.push(depsMap.get(MAP_KEY_ITERATE_KEY))
           }
         } else if (isIntegerKey(key)) {
+          // 数组添加了新元素，获取 length 属性相关的副作用
           // new index added to array -> length changes
           deps.push(depsMap.get('length'))
         }
         break
+      // 删除操作，获取普通对象、Map 对象迭代相关的副作用
       case TriggerOpTypes.DELETE:
         if (!isArray(target)) {
           deps.push(depsMap.get(ITERATE_KEY))
@@ -318,6 +347,7 @@ export function trigger(
           }
         }
         break
+      // 修改操作，获取 Map 对象迭代相关的副作用
       case TriggerOpTypes.SET:
         if (isMap(target)) {
           deps.push(depsMap.get(ITERATE_KEY))
@@ -330,6 +360,7 @@ export function trigger(
     ? { target, type, key, newValue, oldValue, oldTarget }
     : undefined
 
+  // 触发待执行的副作用
   if (deps.length === 1) {
     if (deps[0]) {
       if (__DEV__) {

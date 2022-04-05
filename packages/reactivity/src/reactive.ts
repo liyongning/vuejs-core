@@ -29,6 +29,7 @@ export interface Target {
   [ReactiveFlags.RAW]?: any
 }
 
+// 缓存，以对象为 key，对象的 proxy 代理为 value
 export const reactiveMap = new WeakMap<Target, any>()
 export const shallowReactiveMap = new WeakMap<Target, any>()
 export const readonlyMap = new WeakMap<Target, any>()
@@ -87,16 +88,24 @@ export type UnwrapNestedRefs<T> = T extends Ref ? T : UnwrapRefSimple<T>
  * ```
  */
 export function reactive<T extends object>(target: T): UnwrapNestedRefs<T>
+/**
+ * 返回对象的响应式代理（如果为只读对象，则返回对象本身）
+ */
 export function reactive(target: object) {
+  // 如果 target 是一个只读对象，则直接返回只读版本，reactive 不处理只读对象
   // if trying to observe a readonly proxy, return the readonly version.
   if (isReadonly(target)) {
     return target
   }
+  // 创建对象（普通对象、Map、Set、WeakMap、WeakSet）的响应式代理，即对象的 proxy 代理
   return createReactiveObject(
     target,
     false,
+    // 普通对象的 proxy handler
     mutableHandlers,
+    // 集合对象的 proxy handler
     mutableCollectionHandlers,
+    // 缓存，以对象为 key，对象的 proxy 代理为 value
     reactiveMap
   )
 }
@@ -106,6 +115,7 @@ export declare const ShallowReactiveMarker: unique symbol
 export type ShallowReactive<T> = T & { [ShallowReactiveMarker]?: true }
 
 /**
+ * 返回一个浅响应式对象，原始对象只有根属性是响应式的，而且其中的 ref 不会自动展开，即时是根属性的 ref 值
  * Return a shallowly-reactive copy of the original object, where only the root
  * level properties are reactive. It also does not auto-unwrap refs (even at the
  * root level).
@@ -116,8 +126,11 @@ export function shallowReactive<T extends object>(
   return createReactiveObject(
     target,
     false,
+    // 普通对象的浅响应式处理的 proxy handler
     shallowReactiveHandlers,
+    // 集合对象的浅响应式处理的 proxy handler
     shallowCollectionHandlers,
+    // 浅响应式对象缓存，以对象为 key，对象的 proxy 代理为 value
     shallowReactiveMap
   )
 }
@@ -147,6 +160,8 @@ export type DeepReadonly<T> = T extends Builtin
   : Readonly<T>
 
 /**
+ * 创建一个对象的（响应式对象、原始对象、ref 对象对应的原始对象）只读代理，只读是深层次的，
+ * 读取数据时不进行依赖收集，也不允许更改对象（set、delete）
  * Creates a readonly copy of the original object. Note the returned copy is not
  * made reactive, but `readonly` can be called on an already reactive object.
  */
@@ -156,13 +171,18 @@ export function readonly<T extends object>(
   return createReactiveObject(
     target,
     true,
+    // 普通对象只读处理的 proxy handler，读取时不进行依赖收集，也不允许更改对象（set、delete）
     readonlyHandlers,
+    // 集合的只读处理的 proxy handler
     readonlyCollectionHandlers,
+    // 缓存
     readonlyMap
   )
 }
 
 /**
+ * 创建对象的浅只读代理，只有根属性式只读的，不进行深层次只读处理；另外不对任何 ref 值展开。
+ * 常用于创建 props 对象的代理
  * Returns a reactive-copy of the original object, where only the root level
  * properties are readonly, and does NOT unwrap refs nor recursively convert
  * returned properties.
@@ -172,12 +192,24 @@ export function shallowReadonly<T extends object>(target: T): Readonly<T> {
   return createReactiveObject(
     target,
     true,
+    // 普通对象浅只读处理的 proxy handler
     shallowReadonlyHandlers,
+    // 集合对象的浅只读处理的 proxy handler
     shallowReadonlyCollectionHandlers,
+    // 缓存
     shallowReadonlyMap
   )
 }
 
+/**
+ * 创建对象（普通对象、Map、Set、WeakMap、WeakSet）的响应式代理，即对象的 proxy 代理
+ * @param target 目标对象
+ * @param isReadonly 是否为只读
+ * @param baseHandlers 基础 handler
+ * @param collectionHandlers 集合 handler
+ * @param proxyMap 对象的代理缓存
+ * @returns 
+ */
 function createReactiveObject(
   target: Target,
   isReadonly: boolean,
@@ -185,12 +217,14 @@ function createReactiveObject(
   collectionHandlers: ProxyHandler<any>,
   proxyMap: WeakMap<Target, any>
 ) {
+  // 异常处理，reactive 只能处理对象，非对象直接原样返回
   if (!isObject(target)) {
     if (__DEV__) {
       console.warn(`value cannot be made reactive: ${String(target)}`)
     }
     return target
   }
+  // 如果已经是代理了，则直接返回
   // target is already a Proxy, return it.
   // exception: calling readonly() on a reactive object
   if (
@@ -199,21 +233,27 @@ function createReactiveObject(
   ) {
     return target
   }
+  // 从 缓存 中获取当前对象的代理，如果存在则直接返回已有的代理，避免对象被重复设置代理，
   // target already has corresponding Proxy
   const existingProxy = proxyMap.get(target)
   if (existingProxy) {
     return existingProxy
   }
+  // 验证 target 是否可以被代理，通过一个白名单去查，如果不能代理，则直接返回原对象
   // only a whitelist of value types can be observed.
   const targetType = getTargetType(target)
   if (targetType === TargetType.INVALID) {
     return target
   }
+  // 通过 Proxy 设置代理
   const proxy = new Proxy(
     target,
+    // 如果 target 是集合对象，比如 Map、Set、WeakMap、WeakSet，则使用 collectionHandlers 处理器对象，否则认为是集合对象，使用 baseHandlers 处理器
     targetType === TargetType.COLLECTION ? collectionHandlers : baseHandlers
   )
+  // 通过 weakMap 对象代理，以 target 为 key，target 对象的 proxy 实例为 value
   proxyMap.set(target, proxy)
+  // 返回 target 的 proxy 实例
   return proxy
 }
 
@@ -224,6 +264,7 @@ export function isReactive(value: unknown): boolean {
   return !!(value && (value as Target)[ReactiveFlags.IS_REACTIVE])
 }
 
+// 判断数据是否为只读数据
 export function isReadonly(value: unknown): boolean {
   return !!(value && (value as Target)[ReactiveFlags.IS_READONLY])
 }
@@ -257,5 +298,8 @@ export function markRaw<T extends object>(value: T): T {
 export const toReactive = <T extends unknown>(value: T): T =>
   isObject(value) ? reactive(value) : value
 
+/**
+ * 如果值为对象，则调用 readonly 方法返回对象的只读版本，否则返回值本身 
+ */
 export const toReadonly = <T extends unknown>(value: T): T =>
   isObject(value) ? readonly(value as Record<any, any>) : value

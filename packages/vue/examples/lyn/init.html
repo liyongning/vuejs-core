@@ -15,17 +15,25 @@
 
     <script src="../../dist/vue.global.js"></script>
     <script>
-        const { createApp, ref, onMounted, watch } = Vue
+        const { createApp, ref, onMounted, watch, watchEffect, reactive } = Vue
         const app = createApp({
             setup() {
-                const bar = ref({ t: 't value' })
-                onMounted(() => {
-                    setTimeout(() => {
-                        bar.value = { t: 't value' }
-                    }, 2000)
-                })
+                // const arr = reactive([1, 2, 3])
+                // watchEffect(() => {
+                //     for (let key in arr) {
+                //         console.log('key = ', key)
+                //     }
+                // })
+                // onMounted(() => {
+                //     setTimeout(() => {
+                //         arr[3] = 44
+                //     }, 2000)
+                // })
+                const obj = { bar: 'bar value' }
+                const arrProxy = reactive([obj])
+                console.log('result = ', arrProxy.includes(arrProxy[0]))
                 return {
-                    bar
+                    bar: 'tet'
                 }
             },
         })
