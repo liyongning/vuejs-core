@@ -29,7 +29,7 @@ type RefBase<T> = {
 }
 
 /**
- * 为 ref 值数据副作用，在 ref.dep 集合中记录依赖自己的副作用，将来 ref 更新时，重新执行这些副作用 
+ * 为 ref 值收集副作用，在 ref.dep 集合中记录依赖自己的副作用，将来 ref 更新时，重新执行这些副作用 
  */
 export function trackRefValue(ref: RefBase<any>) {
   // 允许被跟踪 && 有正处于激活状态的副作用

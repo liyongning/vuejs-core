@@ -50,9 +50,17 @@ export let activeEffect: ReactiveEffect | undefined
 export const ITERATE_KEY = Symbol(__DEV__ ? 'iterate' : '')
 export const MAP_KEY_ITERATE_KEY = Symbol(__DEV__ ? 'Map key iterate' : '')
 
+/**
+ * 响应式副作用，接收副作用函数（组件更新函数、computed getter 等）和调用度参数
+ * 1. 通过 effect.run 方法执行副作用函数
+ * 2. 通过 effect.stop 方法停止副作用对响应式数据的监听
+ */
 export class ReactiveEffect<T = any> {
+  // 副作用是否处理激活状态
   active = true
+  // 存放依赖集合，每个元素都是一个依赖集合(set)，集合中存放的是当前副作用实例
   deps: Dep[] = []
+  // 副作用函数执行前，记录当前正处于激活状态的副作用实例，方便当前副作用函数执行完毕后恢复 activeEffect
   parent: ReactiveEffect | undefined = undefined
 
   /**
@@ -72,19 +80,33 @@ export class ReactiveEffect<T = any> {
   onTrigger?: (event: DebuggerEvent) => void
 
   constructor(
+    // 副作用函数，比如 组件更新函数、computed 的 getter 等
     public fn: () => T,
+    // 调度器，指定副作用函数该如何执行
     public scheduler: EffectScheduler | null = null,
     scope?: EffectScope
   ) {
     recordEffectScope(this, scope)
   }
 
+  /**
+   * 执行副作用函数：
+   * 1. 备份当前正处于激活状态的副作用实例 activeEffect 和 shouldTrack 状态，待副作用函数执行结束后恢复这两变量
+   * 2. 查找当前副作用实例是否已经在执行了，只是因为某种原因被打断了（才能让当前副作用实例开始执行），如果是则直接结束，不需要重复执行
+   * 3. 将当前副作用实例设置给 activeEffect，shouldTrack 设置为 true，当执行副作用函数时进行依赖收集
+   * 4. 执行副作用函数
+   * 5. 恢复 activeEffect 和 shouldTrack
+   */
   run() {
+    // this.active 默认为 true，执行 this.stop 后会改变为 false
     if (!this.active) {
       return this.fn()
     }
+    // 记录当前已激活的副作用实例
     let parent: ReactiveEffect | undefined = activeEffect
+    // 记录当前 shouldTrack 状态
     let lastShouldTrack = shouldTrack
+    // 从当前激活的副作用实例的父级实例上寻找当前副作用实例，如果找到了则直接 return，说明当前副作用函数已经开始执行了，不需要重复执行
     while (parent) {
       if (parent === this) {
         return
@@ -92,8 +114,11 @@ export class ReactiveEffect<T = any> {
       parent = parent.parent
     }
     try {
+      // 备份已处于激活状态的副作用实例
       this.parent = activeEffect
+      // 将当前副作用实例赋值给 activeEffect，作为新的已激活的副作用实例
       activeEffect = this
+      // 打开依赖收集，副作用函数执行时进行依赖收集
       shouldTrack = true
 
       trackOpBit = 1 << ++effectTrackDepth
@@ -103,20 +128,25 @@ export class ReactiveEffect<T = any> {
       } else {
         cleanupEffect(this)
       }
+      // 执行副作用函数
       return this.fn()
     } finally {
+      // 副作用函数执行结束，做一些重置操作
       if (effectTrackDepth <= maxMarkerBits) {
         finalizeDepMarkers(this)
       }
 
       trackOpBit = 1 << --effectTrackDepth
 
+      // 更新已激活的副作用实例为刚才备份的之前的实例
       activeEffect = this.parent
+      // 是否进行依赖收集标识恢复到上一个状态
       shouldTrack = lastShouldTrack
       this.parent = undefined
     }
   }
 
+  // 清空依赖，清空之后当前副作用不再依赖任何响应式数据，比如：停止 watch 监听时会调用该方法
   stop() {
     if (this.active) {
       cleanupEffect(this)
@@ -128,12 +158,19 @@ export class ReactiveEffect<T = any> {
   }
 }
 
+/**
+ * 清空依赖，即副作用实例 effect 不再依赖任何响应式数据
+ * @param effect 副作用实例
+ */
 function cleanupEffect(effect: ReactiveEffect) {
+  // 副作用实例上挂载的 依赖集合 数组
   const { deps } = effect
+  // 遍历 deps 数组，删除每个元素（依赖集合）中的当前实例，停止响应式副作用的侦听，即当相关响应式数据发生变化时，依赖的当前副作用不再重新执行
   if (deps.length) {
     for (let i = 0; i < deps.length; i++) {
       deps[i].delete(effect)
     }
+    // 清空 deps 数组，即当前副作用不再依赖任何响应式数据
     deps.length = 0
   }
 }
@@ -205,7 +242,7 @@ export function resetTracking() {
 }
 
 /**
- * 依赖收集，收集 target[key] 依赖的副作用，并将依赖集合在当前激活的副作用上也记录一份
+ * 依赖收集，收集 target[key] 依赖的副作用，并将依赖集合在当前激活的副作用实例上也记录一份
  * @param target 目标对象
  * @param type 操作类型
  * @param key 属性
@@ -257,6 +294,7 @@ export function trackEffects(
   if (shouldTrack) {
     // 为响应式数据收集副作用，相当于记录自己的订阅者，知道了有哪些副作用依赖自己，待将来自己更新时好重新去执行这些副作用
     dep.add(activeEffect!)
+    // 将当前依赖集合添加到副作用实例的 deps 数组中，这样可以通过副作用实例停止响应式数据的侦听（effect.stop)，比如 watch 停止侦听
     activeEffect!.deps.push(dep)
     if (__DEV__ && activeEffect!.onTrack) {
       activeEffect!.onTrack(
