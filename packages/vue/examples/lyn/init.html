@@ -19,16 +19,11 @@
         const app = createApp({
             setup() {
                 const arr = reactive([1, 2, 3])
-                const computedRef = computed(() => {
-                    console.log(arr[1])
-                })
-                onMounted(() => {
-                    setTimeout(() => {
-                        arr[1] = 44
-                    }, 2000)
+                watch(arr, () => {
+                    console.log('watch')
                 })
                 return {
-                    bar: computedRef
+                    bar: arr
                 }
             },
         })

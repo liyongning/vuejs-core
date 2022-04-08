@@ -76,14 +76,24 @@ export interface WatchOptions<Immediate = boolean> extends WatchOptionsBase {
 
 export type WatchStopHandle = () => void
 
-// Simple effect.
+/**
+ * Simple effect. 立即执行传入的 effect 函数，并且当 effect 函数依赖的响应式状态发生改变后重新执行 effect
+ * @param effect 副作用函数
+ * @param options 配置项，同 watch
+ * @returns 
+ */
 export function watchEffect(
   effect: WatchEffect,
   options?: WatchOptionsBase
 ): WatchStopHandle {
+  // 第二个参数（回调）为 null，即相当于 watch(effect, null, options)
   return doWatch(effect, null, options)
 }
 
+/**
+ * watchEffect 的别名，即 watchEffect(() => {}, { flush: 'post' })
+ * 当响应式状态更新后，effect 在组件更新函数之后执行
+ */
 export function watchPostEffect(
   effect: WatchEffect,
   options?: DebuggerOptions
@@ -97,6 +107,10 @@ export function watchPostEffect(
   )
 }
 
+/**
+ * watchEffect 的别名，即 watchEffect(() => {}, { flush: 'sync' })
+ * 当响应式状态更新后，effect 会同步执行
+ */
 export function watchSyncEffect(
   effect: WatchEffect,
   options?: DebuggerOptions
@@ -155,6 +169,13 @@ export function watch<
 ): WatchStopHandle
 
 // implementation
+/**
+ * 侦听数据源，当数据源发生变化时执行回调函数，回调函数默认为懒执行
+ * @param source 数据源
+ * @param cb 回调函数
+ * @param options 配置项 
+ * @returns 
+ */
 export function watch<T = any, Immediate extends Readonly<boolean> = false>(
   source: T | WatchSource<T>,
   cb: any,
@@ -170,11 +191,20 @@ export function watch<T = any, Immediate extends Readonly<boolean> = false>(
   return doWatch(source as any, cb, options)
 }
 
+/**
+ * watch API 的具体实现。
+ * watch 的本质是 ReactiveEffect，当依赖的响应式状态发生改变后，触发 effect.run 方法（ watch source 生成的 getter 函数）重新执行，
+ * 如果用户提供了回调函数（watchEffect 不需要设置回调），执行完 effect.run 方法后，执行副作用清除工作，然后执行回调函数。
+ * 至于 effect.run 和 watch 回调具体如何执行，由 ReactiveEffect 的调度器决定，
+ * watch 将 effect.run 和 回调封装成了一个 job，调度器根据 watch 配置参数决定 job 的执行时机，是同步执行？组件更新函数之后执行？
+ * 还是默认的在组件更新函数之前执行
+ */
 function doWatch(
   source: WatchSource | WatchSource[] | WatchEffect | object,
   cb: WatchCallback | null,
   { immediate, deep, flush, onTrack, onTrigger }: WatchOptions = EMPTY_OBJ
 ): WatchStopHandle {
+  // 开发环境参数设置不当时的异常提示
   if (__DEV__ && !cb) {
     if (immediate !== undefined) {
       warn(
@@ -190,6 +220,7 @@ function doWatch(
     }
   }
 
+  // 当用户提供了错误类型的 source 时的提示信息
   const warnInvalidSource = (s: unknown) => {
     warn(
       `Invalid watch source: `,
@@ -199,20 +230,30 @@ function doWatch(
     )
   }
 
+  // 当前组件实例
   const instance = currentInstance
+  // ReactiveEffect 类的第一个参数 fn
   let getter: () => any
+  // 标时是否应当触发回调函数执行
   let forceTrigger = false
+  // 是否多 source
   let isMultiSource = false
 
+  // 根据不同类型 source，构建 ReactiveEffect 类的第一个参数（函数）
   if (isRef(source)) {
+    // source 是 ref 对象
     getter = () => source.value
     forceTrigger = isShallow(source)
   } else if (isReactive(source)) {
+    // source 是 reactive 对象
     getter = () => source
+    // 如果 watch 监听 reactive 响应式对象，默认就是深度监听
     deep = true
   } else if (isArray(source)) {
+    // source 是数组，即多数据源
     isMultiSource = true
     forceTrigger = source.some(isReactive)
+    // getter 函数的返回值是数组，数组元素 source 数组中每个的值，比如：解包后的 ref 值、函数的执行结果
     getter = () =>
       source.map(s => {
         if (isRef(s)) {
@@ -226,11 +267,14 @@ function doWatch(
         }
       })
   } else if (isFunction(source)) {
+    // source 是函数
     if (cb) {
+      // 带回调的 getter
       // getter with cb
       getter = () =>
         callWithErrorHandling(source, instance, ErrorCodes.WATCH_GETTER)
     } else {
+      // 没有指定回调函数，就是一个简单的 副作用，比如 watchEffect
       // no cb -> simple effect
       getter = () => {
         if (instance && instance.isUnmounted) {
@@ -248,6 +292,7 @@ function doWatch(
       }
     }
   } else {
+    // 提供了错误类型的 source，抛出提示信息
     getter = NOOP
     __DEV__ && warnInvalidSource(source)
   }
@@ -267,11 +312,13 @@ function doWatch(
     }
   }
 
+  // 有回调函数，并且是深度监听
   if (cb && deep) {
     const baseGetter = getter
     getter = () => traverse(baseGetter())
   }
 
+  // 清除副作用，用于在副作用即将重新执行时、侦听器被停止时执行
   let cleanup: () => void
   let onCleanup: OnCleanup = (fn: () => void) => {
     cleanup = effect.onStop = () => {
@@ -296,17 +343,25 @@ function doWatch(
     return NOOP
   }
 
+  // 监听的响应式状态的旧值，如果是多数据源，则是空数组，否则为空对象
   let oldValue = isMultiSource ? [] : INITIAL_WATCHER_VALUE
+  // 调度任务，执行 getter 函数，拿到最新的状态值，如果用户传递了回调函数，则先清理副作用，然后执行回调函数
   const job: SchedulerJob = () => {
+    // effect.active 为 false，则说明已经停止侦听，直接返回
     if (!effect.active) {
       return
     }
     if (cb) {
-      // watch(source, cb)
+      // 存在回调函数，则说明是：watch(source, cb)
+      // 执行 effect.run 方法，即由 watch source 构成的 getter 函数，拿到新的状态值
       const newValue = effect.run()
+      // 当深度监听时 || 强制触发更新时 || 新旧值发生改变，执行副作用清理，然后执行回调函数
       if (
+        // 深度监听
         deep ||
+        // 强制触发
         forceTrigger ||
+        // 新旧值是否发生改变
         (isMultiSource
           ? (newValue as any[]).some((v, i) =>
               hasChanged(v, (oldValue as any[])[i])
@@ -316,34 +371,45 @@ function doWatch(
           isArray(newValue) &&
           isCompatEnabled(DeprecationTypes.WATCH_ARRAY, instance))
       ) {
+        // 在回调被重新执行前清除副作用
         // cleanup before running cb again
         if (cleanup) {
           cleanup()
         }
+        // 执行回调函数，回调函数的参数设置也是在这里进行的
         callWithAsyncErrorHandling(cb, instance, ErrorCodes.WATCH_CALLBACK, [
           newValue,
           // pass undefined as the old value when it's changed for the first time
           oldValue === INITIAL_WATCHER_VALUE ? undefined : oldValue,
           onCleanup
         ])
+        // 更新旧值
         oldValue = newValue
       }
     } else {
-      // watchEffect
+      // 没有指定回调，比如 watchEffect，直接执行 getter
       effect.run()
     }
   }
 
+  // 是否允许调度任务自己触发
   // important: mark the job as a watcher callback so that scheduler knows
   // it is allowed to self-trigger (#1727)
   job.allowRecurse = !!cb
 
+  // 定义 ReactiveEffect 类的第二个参数 —— 调度器，指定当数据源更新后，如果执行 job
+  // 默认为 pre，即所有用户定义的副作用在组件更新函数前执行
+  // sync 表示同步执行，每个响应式状态改变都会同步执行副作用
+  // post 用户定义的副作用在组件更新函数之后执行
   let scheduler: EffectScheduler
   if (flush === 'sync') {
+    // 同步，当响应式状态更改后，副作用会被直接调用执行
     scheduler = job as any // the scheduler function gets called directly
   } else if (flush === 'post') {
+    // 将用户定义的副作用放到队列中，该队列的内容会在组件更新函数之后执行
     scheduler = () => queuePostRenderEffect(job, instance && instance.suspense)
   } else {
+    // 默认值，pre，将用户定义的副作用放入队列，该队列的内容会在组件更新函数前执行
     // default: 'pre'
     scheduler = () => {
       if (!instance || instance.isMounted) {
@@ -356,6 +422,7 @@ function doWatch(
     }
   }
 
+  // 实例化响应式副作用
   const effect = new ReactiveEffect(getter, scheduler)
 
   if (__DEV__) {
@@ -363,22 +430,27 @@ function doWatch(
     effect.onTrigger = onTrigger
   }
 
+  // 初始化运行
   // initial run
   if (cb) {
+    // 如果存在回调函数，并且指定了立即执行，则直接执行 job，否则执行 effect.run，得到数据源的初始值
     if (immediate) {
       job()
     } else {
       oldValue = effect.run()
     }
   } else if (flush === 'post') {
+    // 将 effect.run 放入队列，在组件更新函数之后执行
     queuePostRenderEffect(
       effect.run.bind(effect),
       instance && instance.suspense
     )
   } else {
+    // 直接执行 getter，比如 watchEffect
     effect.run()
   }
 
+  // watch 函数的返回值，执行该函数可停止 watch 侦听，其实本质上就是清空依赖，当响应式数据更改后，不再触发相应副作用
   return () => {
     effect.stop()
     if (instance && instance.scope) {
@@ -438,6 +510,7 @@ export function createPathGetter(ctx: any, path: string) {
 }
 
 export function traverse(value: unknown, seen?: Set<unknown>) {
+  // value 为 非对象 或者 含有 __v_skip 属性，则直接返回原数据
   if (!isObject(value) || (value as any)[ReactiveFlags.SKIP]) {
     return value
   }
