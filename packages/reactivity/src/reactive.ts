@@ -89,7 +89,7 @@ export type UnwrapNestedRefs<T> = T extends Ref ? T : UnwrapRefSimple<T>
  */
 export function reactive<T extends object>(target: T): UnwrapNestedRefs<T>
 /**
- * 返回对象的响应式代理（如果为只读对象，则返回对象本身）
+ * 返回对象的响应式代理
  */
 export function reactive(target: object) {
   // 如果 target 是一个只读对象，则直接返回只读版本，reactive 不处理只读对象
@@ -251,7 +251,7 @@ function createReactiveObject(
     // 如果 target 是集合对象，比如 Map、Set、WeakMap、WeakSet，则使用 collectionHandlers 处理器对象，否则认为是集合对象，使用 baseHandlers 处理器
     targetType === TargetType.COLLECTION ? collectionHandlers : baseHandlers
   )
-  // 通过 weakMap 对象代理，以 target 为 key，target 对象的 proxy 实例为 value
+  // 通过 weakMap 缓存代理，以 target 为 key，target 对象的 proxy 实例为 value
   proxyMap.set(target, proxy)
   // 返回 target 的 proxy 实例
   return proxy

@@ -84,7 +84,8 @@ export function ref<T extends object>(
 export function ref<T>(value: T): Ref<UnwrapRef<T>>
 export function ref<T = any>(): Ref<T | undefined>
 /**
- * ref API，返回 ref 实例。ref API 主要是为了方便代理原始值，当然也可以代理对象
+ * ref API，返回 ref 实例。
+ * ref API 是 Vue3 针对原始值响应式的解决方案，当然 ref 也可以对对象做响应式处理。
  * @param value 被代理的值
  * @returns ref 实例
  */

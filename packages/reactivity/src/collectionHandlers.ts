@@ -271,7 +271,7 @@ interface IterationResult {
 }
 
 /**
- * 可迭代方法工厂函数，根据参数名不同，创建对应的迭代方法
+ * 迭代器方法工厂函数，根据参数名不同，创建对应的迭代方法
  * @param method 方法名
  * @param isReadonly 是否只读
  * @param isShallow 是否浅响应

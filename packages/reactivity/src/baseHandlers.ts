@@ -113,7 +113,7 @@ function createArrayInstrumentations() {
    * 当执行副作用一时，数组的 length 属性被改变，就会触发副作用用二执行，同理副作用二也会改变数组的 length 属性，又触发副作用一
    * 执行，导致死循环。
    * 其实 push、pop 等这些方法的本意是修改数组本身，所以我们根本就不需要让它们和 length 属性建立联系，
-   * 所以这里的方法充血意在配合 track 切断 length 和 push、pop 方法之间的联系，让这些方法只是单纯的修改
+   * 所以这里的方法意在配合 track 切断 length 和 push、pop 等方法之间的联系，让这些方法只是单纯的修改
    * 数组本身即可，不需要和 length 建立联系。
    */
   // instrument length-altering mutation methods to avoid length being tracked
@@ -143,8 +143,8 @@ function createArrayInstrumentations() {
  */
 function createGetter(isReadonly = false, shallow = false) {
   /**
-   * 拦截对象的读取操作：获取读取的值，调用 track 方法进行依赖收集，
-   * 如果读取的值为对象，则递归进行响应式处理，最后返回数据的响应式代理，否则直接返回原始值
+   * 拦截对象的读取操作：获取读取的值，调用 track 方法进行依赖收集（非只读），
+   * 如果读取的值为对象，则递归进行响应式处理（非浅响应式），最后返回数据的响应式代理，否则直接返回原始值
    */
   return function get(target: Target, key: string | symbol, receiver: object) {
     // 过滤掉对象上的一些特殊属性，比如 __v_isReactive、__v_isReadonly、__v_isShallow、__v_raw，
@@ -203,7 +203,7 @@ function createGetter(isReadonly = false, shallow = false) {
     /**
      * 如果返回的查找结果为 ref 值 &&（不是数组 || key 不是整数）则自动解包 ref 值
      * const num = ref(2)
-     * const arr = reactive(1, num, 3)
+     * const arr = reactive([1, num, 3])
      * console.log(arr[1])
      * // 这里的 ref 就不会被解包，说出的结果是一个 ref 值
      */
@@ -239,7 +239,7 @@ const shallowSet = /*#__PURE__*/ createSetter(true)
  */
 function createSetter(shallow = false) {
   /**
-   * 拦截对象设置操作：更新数据，调用 trigger 方法触发相关副作用重新执行
+   * 拦截对象的设置操作：更新数据，调用 trigger 方法触发相关副作用重新执行
    */
   return function set(
     target: object,
