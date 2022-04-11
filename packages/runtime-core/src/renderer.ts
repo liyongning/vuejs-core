@@ -1773,7 +1773,8 @@ function baseCreateRenderer(
     // 当组件依赖的响应式数据发生改变后，组件更新函数会按照指定的方式（第二个参数）执行
     const effect = (instance.effect = new ReactiveEffect(
       componentUpdateFn,
-      // instance.update 会在下面被赋值
+      // instance.update 其实就是 effect.run 方法，会在下面被赋值
+      // 当响应式状态改变后，通过 trigger 触发 effect.scheduler 方法就是 () => queueJob(instance.update)
       () => queueJob(instance.update),
       instance.scope // track it in component's effect scope
     ))
