@@ -84,6 +84,12 @@ export interface CodegenContext
   newline(): void
 }
 
+/**
+ * 创建代码生成的上下文，上下文上设置了众多生成过程的程序运行状态、代码字符串（code）、帮助方法（比如代码拼接、缩进、换行等）
+ * @param ast JavaScript AST
+ * @param param1 编译选项
+ * @returns 
+ */
 function createCodegenContext(
   ast: RootNode,
   {
@@ -125,6 +131,7 @@ function createCodegenContext(
     helper(key) {
       return `_${helperNameMap[key]}`
     },
+    // 代码拼接（字符串拼接）
     push(code, node) {
       context.code += code
       if (!__BROWSER__ && context.map) {
@@ -144,9 +151,11 @@ function createCodegenContext(
         }
       }
     },
+    //换行 + 缩进
     indent() {
       newline(++context.indentLevel)
     },
+    // 取消缩进
     deindent(withoutNewLine = false) {
       if (withoutNewLine) {
         --context.indentLevel
@@ -154,6 +163,7 @@ function createCodegenContext(
         newline(--context.indentLevel)
       }
     },
+    // 换行 + 缩进
     newline() {
       newline(context.indentLevel)
     }
@@ -187,14 +197,22 @@ function createCodegenContext(
   return context
 }
 
+/**
+ * 根据 JavaScript AST 生成模板渲染函数
+ * @param ast JavaScript AST，描述 render 函数的 AST
+ * @param options 编译选项
+ * @returns 
+ */
 export function generate(
   ast: RootNode,
   options: CodegenOptions & {
     onContextCreated?: (context: CodegenContext) => void
   } = {}
 ): CodegenResult {
+  // 创建代码生成的上下文，上下文上设置了众多生成过程的程序运行状态、代码字符串（code）、帮助方法（比如代码拼接、缩进、换行等）
   const context = createCodegenContext(ast, options)
   if (options.onContextCreated) options.onContextCreated(context)
+  // 上下文上的工具方法和状态属性
   const {
     mode,
     push,
@@ -206,7 +224,9 @@ export function generate(
     ssr
   } = context
 
+  // 是否需要从 Vue 中导入一些运行时帮助方法，比如 createElementVNode
   const hasHelpers = ast.helpers.length > 0
+  // 是否使用 with 块
   const useWithBlock = !prefixIdentifiers && mode !== 'module'
   const genScopeId = !__BROWSER__ && scopeId != null && mode === 'module'
   const isSetupInlined = !__BROWSER__ && !!options.inline
@@ -214,6 +234,9 @@ export function generate(
   // preambles
   // in setup() inline mode, the preamble is generated in a sub context
   // and returned separately.
+  // 生成前置代码字符串，即 render 函数上层作用域的一些代码，这些代码负责创建静态节点的 VNode，
+  // 将静态节点的 VNode 作为常量然后在 render 函数中引用，每次更新时（执行 render）不重复生成静态节点的 VNode，
+  // 这是 Vue3 在静态提升部分的优化
   const preambleContext = isSetupInlined
     ? createCodegenContext(ast, options)
     : context
@@ -222,30 +245,42 @@ export function generate(
   } else {
     genFunctionPreamble(ast, preambleContext)
   }
+  
   // enter render function
+  /** 进入 render 函数部分的代码生成 **/
+  
+  // render 函数名称，服务端渲染为 ssrRender，否则为 render
   const functionName = ssr ? `ssrRender` : `render`
+  // render 函数的参数列表
   const args = ssr ? ['_ctx', '_push', '_parent', '_attrs'] : ['_ctx', '_cache']
   if (!__BROWSER__ && options.bindingMetadata && !options.inline) {
     // binding optimization args
     args.push('$props', '$setup', '$data', '$options')
   }
+  // 将参数列表格式化成字符串，如果是 TS 还给每个参数设置了类型
   const signature =
     !__BROWSER__ && options.isTS
       ? args.map(arg => `${arg}: any`).join(',')
       : args.join(', ')
 
+  // (signature) => { 或 function render(signature) {
   if (isSetupInlined) {
     push(`(${signature}) => {`)
   } else {
     push(`function ${functionName}(${signature}) {`)
   }
+
+  // 换行 + 缩进
   indent()
 
+  // render 函数中的 with 代码块，给代码设置上下文
   if (useWithBlock) {
     push(`with (_ctx) {`)
     indent()
     // function mode const declarations should be inside with block
     // also they should be renamed to avoid collision with user properties
+    // 在 with 代码块中从 Vue 上导入一些运行时帮助方法，比如 createElementVNode
+    // const { createElementVNode: _createElementVNode } = _Vue
     if (hasHelpers) {
       push(
         `const { ${ast.helpers
@@ -258,6 +293,7 @@ export function generate(
   }
 
   // generate asset resolution statements
+  //  生成解析依赖资源（组件、指令）的代码，比如 const _component_child_comp = _resolveComponent("child-comp")
   if (ast.components.length) {
     genAssets(ast.components, 'component', context)
     if (ast.directives.length || ast.temps > 0) {
@@ -276,6 +312,7 @@ export function generate(
     newline()
   }
 
+  // 声明了一些变量，比如 let _temp0, _temp1, _temp2
   if (ast.temps > 0) {
     push(`let `)
     for (let i = 0; i < ast.temps; i++) {
@@ -288,6 +325,9 @@ export function generate(
   }
 
   // generate the VNode tree expression
+  // 接下来根据 JavaScript AST 生成 render 函数的返回值，render 函数最终返回 VNode 或 null。
+  // 其实在这之前的所有 generate 都是小打小闹（静态提升、从 Vue 导入运行时 render helper、声明 render 函数、资源解析[组件、指令]），
+  // 而 render 函数的返回值才是主要部分，就是在下面这部分内容生成的。
   if (!ssr) {
     push(`return `)
   }
@@ -314,6 +354,23 @@ export function generate(
   }
 }
 
+/**
+ * 生成一些前置代码字符串，比如：
+ * const _Vue = Vue
+ * const { createElementVNode: _createElementVNode } = _Vue
+ *
+ * const _hoisted_1 = _createElementVNode("p", null, "I am static node", -1)
+ *
+ * return
+ * 
+ * 示例中 return 的是 render 函数，该函数会在响应式数据变化时重新执行。
+ * 
+ * 所以这部分就是 Vue3 编译器优化的一部分，通过 transform 阶段的分析，提取出众多静态节点，
+ * 然后将静态节点代码生成放到 render 函数的上层作用域，这样静态节点在 render 函数中就可以作为
+ * 常量存在，在每次更新（重新执行 render）就不需要再次生成静态节点的 VNODE
+ * @param ast ast 节点
+ * @param context gencode 上下文
+ */
 function genFunctionPreamble(ast: RootNode, context: CodegenContext) {
   const {
     ssr,
@@ -324,15 +381,20 @@ function genFunctionPreamble(ast: RootNode, context: CodegenContext) {
     runtimeGlobalName,
     ssrRuntimeModuleName
   } = context
+  // Vue，全局变量或从 runtimeModuleName 处导入 Vue
   const VueBinding =
     !__BROWSER__ && ssr
       ? `require(${JSON.stringify(runtimeModuleName)})`
       : runtimeGlobalName
+  // 重命名运行时帮助方法名，统一添加 _ 前缀，避免和用户变量冲突
   const aliasHelper = (s: symbol) => `${helperNameMap[s]}: _${helperNameMap[s]}`
   // Generate const declaration for helpers
   // In prefix mode, we place the const declaration at top so it's done
   // only once; But if we not prefixing, we place the declaration inside the
   // with block so it doesn't incur the `in` check cost for every helper access.
+  // ast.helpers 是 transform 阶段设置的，表明该节点都需要哪些 render helper 方法，
+  // 然后将这些方法从 Vue 中导入，在运行时被调用，比如 createElementVNode 创建元素的 VNode。
+  // 比如 const { createElementVNode: _createElementVNode } = Vue
   if (ast.helpers.length > 0) {
     if (!__BROWSER__ && prefixIdentifiers) {
       push(
@@ -360,6 +422,7 @@ function genFunctionPreamble(ast: RootNode, context: CodegenContext) {
       }
     }
   }
+  // 生成服务端渲染时的 helper 方法导入`
   // generate variables for ssr helpers
   if (!__BROWSER__ && ast.ssrHelpers && ast.ssrHelpers.length) {
     // ssr guarantees prefixIdentifier: true
@@ -369,8 +432,10 @@ function genFunctionPreamble(ast: RootNode, context: CodegenContext) {
         .join(', ')} } = require("${ssrRuntimeModuleName}")\n`
     )
   }
+  // 遍历静态节点数组，调用 genNode 方法将节点生成代码，然后将生成的代码字符串拼接到 context.code 上
   genHoists(ast.hoists, context)
   newline()
+  // 在 context.code 上拼接 return 
   push(`return `)
 }
 
@@ -440,11 +505,18 @@ function genModulePreamble(
   }
 }
 
+/**
+ * 生成解析依赖资源的代码，比如 const _component_child_comp = _resolveComponent("child-comp")
+ * @param assets 当前模板依赖的资源，比如组件、指令
+ * @param type 
+ * @param param2 
+ */
 function genAssets(
   assets: string[],
   type: 'component' | 'directive' | 'filter',
   { helper, push, newline, isTS }: CodegenContext
 ) {
+  // 解析资源的方法名，该方法有 Vue 提供
   const resolver = helper(
     __COMPAT__ && type === 'filter'
       ? RESOLVE_FILTER
@@ -452,13 +524,18 @@ function genAssets(
       ? RESOLVE_COMPONENT
       : RESOLVE_DIRECTIVE
   )
+  // 遍历资源列表，依次生成相关资源解析的代码
   for (let i = 0; i < assets.length; i++) {
     let id = assets[i]
+    // 应该属于递归组件的一部分内容，
+    // 从单文件组件的文件名推断潜在的递归组件，如果是递归组件，组件名需要将 __self 后缀去掉
     // potential component implicit self-reference inferred from SFC filename
     const maybeSelfReference = id.endsWith('__self')
     if (maybeSelfReference) {
       id = id.slice(0, -6)
     }
+    // 比如：const _component_child_comp = _resolveComponent("child-comp")
+    // const _type_idName = _resolverType(idName)
     push(
       `const ${toValidAssetId(id, type)} = ${resolver}(${JSON.stringify(id)}${
         maybeSelfReference ? `, true` : ``
@@ -470,11 +547,20 @@ function genAssets(
   }
 }
 
+/**
+ * 遍历静态节点数组，调用 genNode 方法将节点生成代码，然后将生成的代码字符串拼接到 context.code 上
+ * @param hoists transform 阶段所有被静态提升的节点
+ * @param context gencode 上下文
+ * @returns 
+ */
 function genHoists(hoists: (JSChildNode | null)[], context: CodegenContext) {
+  // 没有静态节点，直接 return
   if (!hoists.length) {
     return
   }
+  // 在 generate 阶段的一种模式
   context.pure = true
+  // 上下文上的一些工具方法
   const { push, newline, helper, scopeId, mode } = context
   const genScopeId = !__BROWSER__ && scopeId != null && mode !== 'function'
   newline()
@@ -489,6 +575,7 @@ function genHoists(hoists: (JSChildNode | null)[], context: CodegenContext) {
     newline()
   }
 
+  // 遍历静态节点数组，调用 genNode 方法将节点生成代码，然后将生成的代码字符串拼接到 context.code 上
   for (let i = 0; i < hoists.length; i++) {
     const exp = hoists[i]
     if (exp) {
@@ -572,15 +659,27 @@ function genNodeList(
   }
 }
 
+/**
+ * 根据节点类型不同，调用不同的代码生成方法，比如元素节点递归调用 genNode，文本节点调用 genText 方法，
+ * 然后将生成的代码字符串拼接到 context.code 上
+ * @param node 节点
+ * @param context gencode 上下文 
+ * @returns 
+ */
 function genNode(node: CodegenNode | symbol | string, context: CodegenContext) {
+  // 如果 node 是 string 类型，则直接进行字符串拼接
   if (isString(node)) {
     context.push(node)
     return
   }
+  // 如果 node 是 Symbol 类型，说明是一个 render helper 方法，比如 createElementVNode 方法，
+  // 通过 context.helper 方法获取对应 render helper 方法名的字符串，然后进行字符串拼接，这里其实就是
+  // 拼了一个函数调用
   if (isSymbol(node)) {
     context.push(context.helper(node))
     return
   }
+  // 针对不同类型节点，调用不同的代码生成方法，然后将生成的代码字符串拼接到 context.code 上
   switch (node.type) {
     case NodeTypes.ELEMENT:
     case NodeTypes.IF:

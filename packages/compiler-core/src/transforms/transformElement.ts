@@ -70,13 +70,21 @@ import {
 // import, which should be used instead of a resolveDirective call.
 const directiveImportMap = new WeakMap<DirectiveNode, symbol>()
 
-// generate a JavaScript AST for this element's codegen
+/**
+ * generate a JavaScript AST for this element's codegen
+ * 为 node.codegen 生成 JavaScript AST，方法运行在递归的退出节点，即 node 所有子节点转换结束之后
+ * @param node 
+ * @param context 
+ * @returns 
+ */
 export const transformElement: NodeTransform = (node, context) => {
-  // perform the work on exit, after all child expressions have been
-  // processed and merged.
+  // perform the work on exit, after all child expressions have been processed and merged.
+  // 在所有子节点处理完成之后，执行退出工作
   return function postTransformElement() {
+    // 当前要处理的节点
     node = context.currentNode!
 
+    // 只处理元素和组件节点
     if (
       !(
         node.type === NodeTypes.ELEMENT &&
@@ -87,15 +95,20 @@ export const transformElement: NodeTransform = (node, context) => {
       return
     }
 
+    // 标签和属性
     const { tag, props } = node
+    // 是否为组件节点
     const isComponent = node.tagType === ElementTypes.COMPONENT
 
-    // The goal of the transform is to create a codegenNode implementing the
-    // VNodeCall interface.
+    // The goal of the transform is to create a codegenNode implementing the VNodeCall interface.
+    // 转换的目标是创建一个实现 VNodeCall 接口的 codegenNode
+
+    // 设置标签名
     let vnodeTag = isComponent
       ? resolveComponentType(node as ComponentNode, context)
       : `"${tag}"`
 
+    // 是否为动态组件
     const isDynamicComponent =
       isObject(vnodeTag) && vnodeTag.callee === RESOLVE_DYNAMIC_COMPONENT
 
@@ -107,8 +120,10 @@ export const transformElement: NodeTransform = (node, context) => {
     let dynamicPropNames: string[] | undefined
     let vnodeDirectives: VNodeCall['directives']
 
+    // 是否应该使用 block
     let shouldUseBlock =
       // dynamic component may resolve to plain elements
+      // 动态组件也许可以接续为普通元素
       isDynamicComponent ||
       vnodeTag === TELEPORT ||
       vnodeTag === SUSPENSE ||
@@ -374,6 +389,14 @@ function resolveSetupReference(name: string, context: TransformContext) {
 
 export type PropsExpression = ObjectExpression | CallExpression | ExpressionNode
 
+/**
+ * 
+ * @param node 模板 AST 节点
+ * @param context 转换上下文 
+ * @param props 节点属性 AST 组成的数组
+ * @param ssr 
+ * @returns 
+ */
 export function buildProps(
   node: ElementNode,
   context: TransformContext,
@@ -386,7 +409,9 @@ export function buildProps(
   dynamicPropNames: string[]
   shouldUseBlock: boolean
 } {
+  // 节点的标签名、在模板中的位置信息、子节点
   const { tag, loc: elementLoc, children } = node
+  // 是否为组件
   const isComponent = node.tagType === ElementTypes.COMPONENT
   let properties: ObjectExpression['properties'] = []
   const mergeArgs: PropsExpression[] = []
@@ -396,6 +421,7 @@ export function buildProps(
 
   // patchFlag analysis
   let patchFlag = 0
+  // 标识节点是否含有 ref 属性
   let hasRef = false
   let hasClassBinding = false
   let hasStyleBinding = false
@@ -463,10 +489,16 @@ export function buildProps(
     // static attribute
     const prop = props[i]
     if (prop.type === NodeTypes.ATTRIBUTE) {
+      // 静态属性
+      // 属性的位置信息、属性名、属性值
       const { loc, name, value } = prop
+      // 标识是否为静态节点
       let isStatic = true
+      // ref 属性，比如：<div ref="refVar"><div>
       if (name === 'ref') {
+        // 标识节点含有 ref 属性
         hasRef = true
+        // v-for 指令的转换结果
         if (context.scopes.vFor > 0) {
           properties.push(
             createObjectProperty(
@@ -478,12 +510,14 @@ export function buildProps(
         // in inline mode there is no setupState object, so we can't use string
         // keys to set the ref. Instead, we need to transform it to pass the
         // actual ref instead.
+        // 在内联模式下没有 setupState 对象，所以我们不能使用字符串键来设置 ref。相反，我们需要对其进行转换以传递实际的 ref
         if (
           !__BROWSER__ &&
           value &&
           context.inline &&
           context.bindingMetadata[value.content]
         ) {
+          // 非静态节点
           isStatic = false
           properties.push(
             createObjectProperty(
@@ -493,6 +527,7 @@ export function buildProps(
           )
         }
       }
+      // 跳过 component 组件 或者 属性值以 vue: 开头的处理
       // skip is on <component>, or is="vue:xxx"
       if (
         name === 'is' &&

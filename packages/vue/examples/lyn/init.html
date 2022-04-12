@@ -11,6 +11,8 @@
 <body>
     <div id="app">
         <p>{{ bar }}</p>
+        <p>I am static node</p>
+        <child-comp></child-comp>
     </div>
 
     <script src="../../dist/vue.global.js"></script>
@@ -26,6 +28,9 @@
                     bar: arr
                 }
             },
+        }).
+        component('child-comp', {
+            template: '<div>child component</div>'
         })
         app.mount('#app')
     </script>

@@ -122,6 +122,12 @@ export interface TransformContext
   filters?: Set<string>
 }
 
+/**
+ * 创建转换上下文，方便在各个转换方法中共享相关数据，比如转换时的一些状态信息、节点转换方法、帮助方法等
+ * @param root 模版 AST 对象
+ * @param param1 参数
+ * @returns 
+ */
 export function createTransformContext(
   root: RootNode,
   {
@@ -196,6 +202,7 @@ export function createTransformContext(
     inVOnce: false,
 
     // methods
+    // 在 context.helpers Map 中存储一些方法名，这些方法是告诉 generate，在生成渲染函数代码时需要从 Vue 中导入这些方法
     helper(name) {
       const count = context.helpers.get(name) || 0
       context.helpers.set(name, count + 1)
@@ -278,15 +285,20 @@ export function createTransformContext(
         }
       }
     },
+    // 节点静态提升，将可以做静态提升的节点放到 context.hoists 数组中，
+    // 另外生成一个简单表达式节点，并将静态节点设置到标识符上返回
     hoist(exp) {
       if (isString(exp)) exp = createSimpleExpression(exp)
+      // 将节点放入 context.hoists 数组中
       context.hoists.push(exp)
+      // 创建一个简单表达式的节点（标识符）
       const identifier = createSimpleExpression(
         `_hoisted_${context.hoists.length}`,
         false,
         exp.loc,
         ConstantTypes.CAN_HOIST
       )
+      // 在标识符上设置节点
       identifier.hoisted = exp
       return identifier
     },
@@ -314,16 +326,30 @@ export function createTransformContext(
   return context
 }
 
+/**
+ * 节点转换 + 优化。
+ * 1. 通过各种转换方法将 模板 AST 转换为 JavaScript AST
+ * 2. 静态提升，将所有的静态节点、静态属性放到 root.hoists 数组中，对应节点的 gencodeNode 属性被替换掉了（设置成了静态节点对应的简单表达式节点）
+ * @param root 模板 AST
+ * @param options 编译选项，不过其中多了很多节点转换方法
+ */
 export function transform(root: RootNode, options: TransformOptions) {
+  // 创建转换上下文，方便在各个转换方法中共享相关数据，比如转换时的一些状态信息、节点转换方法、帮助方法等
   const context = createTransformContext(root, options)
+  // 递归遍历模板 AST，为节点执行各种转换方法，转换节点，最终将 模板 AST 转换为 JavaScript AST，
+  // 将 JavaScript AST 设置给 node.codegenNode
   traverseNode(root, context)
+  // 静态提升，递归遍历节点，找到可以被静态提升的节点或属性，将它们记录到 context.hoists 数组中，
+  // 并给予静态节点创建简单表达式节点，并将静态节点设置到表达式节点上，然后用表达式节点覆写 node.codegenNode
   if (options.hoistStatic) {
     hoistStatic(root, context)
   }
+  // 为根节点创建 codegenNode 属性
   if (!options.ssr) {
     createRootCodegen(root, context)
   }
   // finalize meta information
+  // 将上下文上的一些信息设给 root 节点，比如需要从 Vue 中导入的一些运行时方法、静态提升的节点等
   root.helpers = [...context.helpers.keys()]
   root.components = [...context.components]
   root.directives = [...context.directives]
@@ -387,6 +413,11 @@ function createRootCodegen(root: RootNode, context: TransformContext) {
   }
 }
 
+/**
+ * 遍历所有子节点（parent.children)，为每个节点调用 traverseNode 方法
+ * @param parent 
+ * @param context 
+ */
 export function traverseChildren(
   parent: ParentNode,
   context: TransformContext
@@ -395,6 +426,7 @@ export function traverseChildren(
   const nodeRemoved = () => {
     i--
   }
+  // 遍历子节点，在上下文上记录子节点的索引、以及自己的父节点，然后调用 traverseNode 方法进行转换
   for (; i < parent.children.length; i++) {
     const child = parent.children[i]
     if (isString(child)) continue
@@ -405,15 +437,28 @@ export function traverseChildren(
   }
 }
 
+/**
+ * 递归遍历模板 AST，为节点执行各种转换方法，转换节点，最终将 模板 AST 转换为 JavaScript AST，
+ * 将 JavaScript AST 设置给 node.codegenNode
+ * @param node 模板 AST
+ * @param context 转换上下文
+ * @returns 
+ */
 export function traverseNode(
   node: RootNode | TemplateChildNode,
   context: TransformContext
 ) {
+  // 在上下文上记录当前正在遍历的节点
   context.currentNode = node
   // apply transform plugins
+  // 一组节点转换方法
   const { nodeTransforms } = context
+  // exitFns 用来存储转换方法返回的回调函数。因为节点的有些转换需要在其所有子节点都转换之后进行
   const exitFns = []
+  // 遍历转换方法，为节点调用每个转换方法做处理
   for (let i = 0; i < nodeTransforms.length; i++) {
+    // 调用转换方法，转换 node 节点，
+    // 如果转换方法返回了回调函数，则 push 进 onExit 数组，待将来递归退出阶段再执行这些回调
     const onExit = nodeTransforms[i](node, context)
     if (onExit) {
       if (isArray(onExit)) {
@@ -423,22 +468,28 @@ export function traverseNode(
       }
     }
     if (!context.currentNode) {
+      // 节点在经过转换方法处理之后有可能会被删掉，所以如果不存在了就直接 return，不再进行后续的处理
       // node was removed
       return
     } else {
+      // 上面转换方法处理的是 context.currentNode，将处理后的节点赋值给 node 变量
       // node may have been replaced
       node = context.currentNode
     }
   }
 
+  // 根据节点类型不同做一些处理，
+  // 1. 设置 context.helpers Map，告诉 generate，需要从 Vue 中导入哪些运行时帮助方法
+  // 2. 处理容器节点，递归调用也是在这里触发的
   switch (node.type) {
+    // 注释节点
     case NodeTypes.COMMENT:
       if (!context.ssr) {
-        // inject import for the Comment symbol, which is needed for creating
-        // comment nodes with `createVNode`
+        // inject import for the Comment symbol, which is needed for creating comment nodes with `createVNode`
         context.helper(CREATE_COMMENT)
       }
       break
+    // 插值表达式节点
     case NodeTypes.INTERPOLATION:
       // no need to traverse, but we need to inject toString helper
       if (!context.ssr) {
@@ -446,6 +497,7 @@ export function traverseNode(
       }
       break
 
+    // 以下几种类型的节点都属于容器类型的节点，需要进一步向下遍历
     // for container types, further traverse downwards
     case NodeTypes.IF:
       for (let i = 0; i < node.branches.length; i++) {
@@ -456,12 +508,15 @@ export function traverseNode(
     case NodeTypes.FOR:
     case NodeTypes.ELEMENT:
     case NodeTypes.ROOT:
+      // 遍历所有子节点（node.children)，为每个节点调用 traverseNode 方法
       traverseChildren(node, context)
       break
   }
 
+  // 走到这里说明当前节点的所有子节点都处理完了，执行节点的后续处理
   // exit transforms
   context.currentNode = node
+  // 注意这里需要倒叙执行，和递归思想一样，最先 push 进来的方法最后执行
   let i = exitFns.length
   while (i--) {
     exitFns[i]()

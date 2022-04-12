@@ -196,8 +196,9 @@ export interface DirectiveNode extends Node {
 
 /**
  * Static types have several levels.
- * Higher levels implies lower levels. e.g. a node that can be stringified
- * can always be hoisted and skipped for patch.
+ * Higher levels implies lower levels. 
+ * e.g. a node that can be stringified can always be hoisted and skipped for patch.
+ * 静态类型的几个级别，从 0 - 3 依次是：不需要静态提升、可以跳过 patch、可以提升、可以字符串化
  */
 export const enum ConstantTypes {
   NOT_CONSTANT = 0,
@@ -548,12 +549,17 @@ export const locStub: SourceLocation = {
   end: { line: 1, column: 1, offset: 0 }
 }
 
+/**
+ * 创建根节点
+ */
 export function createRoot(
   children: TemplateChildNode[],
   loc = locStub
 ): RootNode {
   return {
+    // 节点类型
     type: NodeTypes.ROOT,
+    // 子节点
     children,
     helpers: [],
     components: [],
@@ -563,6 +569,7 @@ export function createRoot(
     cached: 0,
     temps: 0,
     codegenNode: undefined,
+    // 节点在字符串模版中的位置信息
     loc
   }
 }
@@ -641,6 +648,14 @@ export function createObjectProperty(
   }
 }
 
+/**
+ * 创建简单表达式节点
+ * @param content 表达式内容，就是一个字符串
+ * @param isStatic 是否为静态内容
+ * @param loc 节点在模板中的位置信息
+ * @param constType 静态类型的级别
+ * @returns 
+ */
 export function createSimpleExpression(
   content: SimpleExpressionNode['content'],
   isStatic: SimpleExpressionNode['isStatic'] = false,

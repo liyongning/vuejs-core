@@ -37,10 +37,17 @@ export const DOMDirectiveTransforms: Record<string, DirectiveTransform> = {
   show: transformShow
 }
 
+/**
+ * 对外暴露的高阶编译器
+ * @param template 字符串模板
+ * @param options 编译器选项
+ * @returns 
+ */
 export function compile(
   template: string,
   options: CompilerOptions = {}
 ): CodegenResult {
+  // 调用 compiler-core 中的 baseCompile 方法，编译模板
   return baseCompile(
     template,
     extend({}, parserOptions, options, {

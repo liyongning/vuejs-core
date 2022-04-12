@@ -216,6 +216,13 @@ export function advancePositionWithClone(
   )
 }
 
+/**
+ * 根据要切掉的字符数量，更新上下文中的位置信息（偏移量、行号、列号）
+ * @param pos 上下文
+ * @param source 模版字符串
+ * @param numberOfCharacters 要切掉的字符数量
+ * @returns 
+ */
 // advance by mutation without cloning (for performance reasons), since this
 // gets called a lot in the parser
 export function advancePositionWithMutation(
@@ -225,6 +232,7 @@ export function advancePositionWithMutation(
 ): Position {
   let linesCount = 0
   let lastNewLinePos = -1
+  // 从字符串模版中遍历指定数量的字符，如果遍历期间碰到了换行符，则记录遍历的行数和换行时遍历了多少字符
   for (let i = 0; i < numberOfCharacters; i++) {
     if (source.charCodeAt(i) === 10 /* newline char code */) {
       linesCount++
@@ -232,6 +240,7 @@ export function advancePositionWithMutation(
     }
   }
 
+  // 更新上下文中的配置信息（偏移量、行号、列号）
   pos.offset += numberOfCharacters
   pos.line += linesCount
   pos.column =

@@ -40,9 +40,13 @@ export const IS_REF = Symbol(__DEV__ ? `isRef` : ``)
 export const WITH_MEMO = Symbol(__DEV__ ? `withMemo` : ``)
 export const IS_MEMO_SAME = Symbol(__DEV__ ? `isMemoSame` : ``)
 
-// Name mapping for runtime helpers that need to be imported from 'vue' in
-// generated code. Make sure these are correctly exported in the runtime!
+// Name mapping for runtime helpers that need to be imported from 'vue' in generated code. 
+// Make sure these are correctly exported in the runtime!
 // Using `any` here because TS doesn't allow symbols as index type.
+// render helper 帮助方法映射
+// 在 generate 代码时从 Vue 中导入的运行时方法 Map，key 为对应方法的 Symbol 值，值为方法名。
+// 确保这些方法在运行时能为正确导出。
+// 使用 any 类型是因为 TS 不允许 Symbol 类型的 key 作为索引
 export const helperNameMap: any = {
   [FRAGMENT]: `Fragment`,
   [TELEPORT]: `Teleport`,
