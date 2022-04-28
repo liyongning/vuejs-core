@@ -108,7 +108,9 @@ export function baseCompile(
     }
   }
 
-  // 节点转换，递归遍历 AST 节点，为节点执行各种转换方法，准换节点，将 模板 AST 转换为 JavaScript AST，并设置到 ast.codegenNode。
+  // 节点转换 + 优化。
+  //   1. 通过各种转换方法将 模板 AST 转换为 JavaScript AST，并在转换过程中标记了 block 节点(v-if、v-for、含有动态数据的节点、keep-alive 组件)
+  //   2. 静态提升，将所有的静态节点、静态属性放到 root.hoists 数组中，对应节点的 gencodeNode 属性被替换掉了（设置成了静态节点对应的简单表达式节点）
   // baseParse 将模板解析为描述字符串模板结构的 AST，transform 将 模板 AST 转换为描述 render 函数的 JavaScript AST。
   // 这里采用插件式架构，将具体的转换方法通过回调的方式提供，这样可以有效性的控制核心编译器的代码量，提高可维护性。
   // 也为覆写提供了可能，比如 跨平台，很多方法可以由高阶编译器提供。

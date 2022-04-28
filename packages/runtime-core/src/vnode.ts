@@ -233,6 +233,25 @@ export let currentBlock: VNode[] | null = null
  * ```
  * disableTracking is true when creating a v-for fragment block, since a v-for
  * fragment always diffs its children.
+ * 
+ * 首先这是一个私有方法，其实 vnode 里面的方法都是私有的，只能用于框架内部。
+ * 在 render 函数中创建 vnode 前可能会打开 block，如下使用方式：
+
+ * ```js
+ * function render() {
+ *   return (openBlock(),createBlock('div', null, [...]))
+ * }
+ * ```
+ * 
+ * block 打开期间，会将创建的所有 vnode 都收集到 currentBlock 数组中，
+ * 然后在 setupBlock 方法中将 currentBlock 数组设置给 vnode.dynamicChildren 对象，
+ * 这里的 vnode 是一个 block 节点，即 currentBlock 中存放的都是当前 vnode 下的动态节点
+ * 
+ * 在创建 v-for fragment block 时 disableTracking 是 true，表示不会收集，所以 v-for fragment 总是需要 diff 它的子节点
+ * 
+ * 经过 编译器 的 transform 优化之后，生成的渲染函数中，所有的静态节点、静态属性都被提升到了 render 函数之外创建，
+ * 然后作为一个常量在 render 函数中使用，而 render 函数中创建的 vnode 都是动态节点，这些动态节点会被设置给 blockVNode.dynamicChildren 对象，
+ * 最终会形成一棵 block tree
  *
  * @private
  */
@@ -240,6 +259,7 @@ export function openBlock(disableTracking = false) {
   blockStack.push((currentBlock = disableTracking ? null : []))
 }
 
+// openBlock 配对的关闭 block 收集的方法
 export function closeBlock() {
   blockStack.pop()
   currentBlock = blockStack[blockStack.length - 1] || null
@@ -271,14 +291,23 @@ export function setBlockTracking(value: number) {
   isBlockTreeEnabled += value
 }
 
+/**
+ * 将打开 block 期间收集到的动态节点（当前节点的子节点）设置给 vnode.dynamicChildren 对象，
+ * 如果存在 父 block，将 vnode 添加到 currentBlock 数组中，形成 block tree
+ * @param vnode block 节点的 vnode
+ * @returns 
+ */
 function setupBlock(vnode: VNode) {
+  // 在 block vnode 上保存收集到的所有动态子节点
   // save current block children on the block vnode
   vnode.dynamicChildren =
     isBlockTreeEnabled > 0 ? currentBlock || (EMPTY_ARR as any) : null
+  // 关闭当前打开的 block
   // close block
   closeBlock()
-  // a block is always going to be patched, so track it as a child of its
-  // parent block
+  // 刚才关闭掉打开的 block 之后，currentBlock 仍然不为空，说明刚关掉的是一个 子 block，将 子 block 放到 父 block 内，形成 block tree
+  // 即 currentBlock = [vnode1, vnode2, { dynamicChildren: [vnode11, vnode22, ...] }]
+  // a block is always going to be patched, so track it as a child of its parent block
   if (isBlockTreeEnabled > 0 && currentBlock) {
     currentBlock.push(vnode)
   }

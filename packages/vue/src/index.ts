@@ -93,7 +93,6 @@ function compileToFunction(
   const render = (
     __GLOBAL__ ? new Function(code)() : new Function('Vue', code)(runtimeDom)
   ) as RenderFunction
-  debugger
 
   // 标记渲染函数是由编译器生成的
   // mark the function as runtime compiled

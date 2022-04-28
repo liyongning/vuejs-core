@@ -10,8 +10,8 @@
 
 <body>
     <div id="app">
-        <p>{{ bar }}</p>
-        <p>I am static node</p>
+        <p class="test">{{ bar }}</p>
+        <p>I am static note</p>
         <child-comp></child-comp>
     </div>
 
@@ -21,11 +21,8 @@
         const app = createApp({
             setup() {
                 const arr = reactive([1, 2, 3])
-                watch(arr, () => {
-                    console.log('watch')
-                })
                 return {
-                    bar: arr
+                    bar: arr,
                 }
             },
         }).

@@ -19,7 +19,7 @@
  * patchFlag 是编译器 generate 阶段的优化提示。
  * 当 diff 期间遇到了还有 dynamicChildren 属性的 block（就是含有 dynamicChildren 属性的虚拟 DOM），
  * diff 算法会进入优化模式。在这个模式下，我们知道 vdom 是由编译器生成的 render 函数产生的，算法只需要
- * 根据这些 patchFlag 标记进行更新，也就是说这些 patchFlag 指示 diff 算法在优化模式下如果高效的更新。
+ * 根据这些 patchFlag 标记进行更新，也就是说这些 patchFlag 指示 diff 算法在优化模式下如何高效的更新。
  * 
  * 可以使用位运算组合 patchFlag，然后使用 & 操作符去使用，例如：
  *

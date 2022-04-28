@@ -574,6 +574,7 @@ export function createRoot(
   }
 }
 
+// 创建一个 VNODE_CALL 类型的 AST 节点
 export function createVNodeCall(
   context: TransformContext | null,
   tag: VNodeCall['tag'],

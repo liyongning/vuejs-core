@@ -328,7 +328,7 @@ export function createTransformContext(
 
 /**
  * 节点转换 + 优化。
- * 1. 通过各种转换方法将 模板 AST 转换为 JavaScript AST
+ * 1. 通过各种转换方法将 模板 AST 转换为 JavaScript AST，并在转换过程中标记了 block 节点(v-if、v-for、含有动态数据的节点、keep-alive 组件)
  * 2. 静态提升，将所有的静态节点、静态属性放到 root.hoists 数组中，对应节点的 gencodeNode 属性被替换掉了（设置成了静态节点对应的简单表达式节点）
  * @param root 模板 AST
  * @param options 编译选项，不过其中多了很多节点转换方法
@@ -336,7 +336,7 @@ export function createTransformContext(
 export function transform(root: RootNode, options: TransformOptions) {
   // 创建转换上下文，方便在各个转换方法中共享相关数据，比如转换时的一些状态信息、节点转换方法、帮助方法等
   const context = createTransformContext(root, options)
-  // 递归遍历模板 AST，为节点执行各种转换方法，转换节点，最终将 模板 AST 转换为 JavaScript AST，
+  // 递归遍历模板 AST，为节点执行各种转换方法，最终将 模板 AST 转换为 JavaScript AST，并在转换过程中标记了 block 节点(v-if、v-for、含有动态数据的节点、keep-alive 组件)
   // 将 JavaScript AST 设置给 node.codegenNode
   traverseNode(root, context)
   // 静态提升，递归遍历节点，找到可以被静态提升的节点或属性，将它们记录到 context.hoists 数组中，
@@ -344,7 +344,7 @@ export function transform(root: RootNode, options: TransformOptions) {
   if (options.hoistStatic) {
     hoistStatic(root, context)
   }
-  // 为根节点创建 codegenNode 属性
+  // 为根节点创建 codegenNode 属性，并将根节点（单根节点和 fragment 节点）标记为 block 节点
   if (!options.ssr) {
     createRootCodegen(root, context)
   }
@@ -363,10 +363,16 @@ export function transform(root: RootNode, options: TransformOptions) {
   }
 }
 
+/**
+ * 为根节点创建 codegenNode 属性，并将根节点（单根节点和 fragment 节点）标记为 block 节点
+ * @param root 根节点 AST
+ * @param context 转换上下文
+ */
 function createRootCodegen(root: RootNode, context: TransformContext) {
   const { helper } = context
   const { children } = root
   if (children.length === 1) {
+    // 单根节点，将根节点标记为 block 节点，即 node.isBlock = true
     const child = children[0]
     // if the single child is an element, turn it into a block.
     if (isSingleElementRoot(root, child) && child.codegenNode) {
@@ -374,6 +380,7 @@ function createRootCodegen(root: RootNode, context: TransformContext) {
       // SimpleExpressionNode
       const codegenNode = child.codegenNode
       if (codegenNode.type === NodeTypes.VNODE_CALL) {
+        // 将节点标记为 block 节点，node.isBlock = true
         makeBlock(codegenNode, context)
       }
       root.codegenNode = codegenNode
@@ -384,6 +391,7 @@ function createRootCodegen(root: RootNode, context: TransformContext) {
       root.codegenNode = child
     }
   } else if (children.length > 1) {
+    // 多根节点，返回一个 fragment block
     // root has multiple nodes - return a fragment block.
     let patchFlag = PatchFlags.STABLE_FRAGMENT
     let patchFlagText = PatchFlagNames[PatchFlags.STABLE_FRAGMENT]
@@ -438,7 +446,7 @@ export function traverseChildren(
 }
 
 /**
- * 递归遍历模板 AST，为节点执行各种转换方法，转换节点，最终将 模板 AST 转换为 JavaScript AST，
+ * 递归遍历模板 AST，为节点执行各种转换方法，最终将 模板 AST 转换为 JavaScript AST，并在转换过程中标记了 block 节点(v-if、v-for、含有动态数据的节点、keep-alive 组件)
  * 将 JavaScript AST 设置给 node.codegenNode
  * @param node 模板 AST
  * @param context 转换上下文
