@@ -98,13 +98,13 @@ export const enum PatchFlags {
 
   /**
    * Indicates a fragment with keyed or partially keyed children
-   * 带有 key 属性的 Fragment
+   * 表示 Fragment 的子节点有 key 或 部分有 key
    */
   KEYED_FRAGMENT = 1 << 7,
 
   /**
    * Indicates a fragment with unkeyed children.
-   * 子节点没有 key 的 Fragment
+   * 表示 Fragment 的子节点没有 key
    */
   UNKEYED_FRAGMENT = 1 << 8,
 

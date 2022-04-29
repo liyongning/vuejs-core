@@ -10,9 +10,9 @@
 
 <body>
     <div id="app">
-        <p class="test">{{ bar }}</p>
+        <p class="test" :test="bar" :class="color">{{ bar }}</p>
         <p>I am static note</p>
-        <child-comp></child-comp>
+        <child-comp :foo="bar"></child-comp>
     </div>
 
     <script src="../../dist/vue.global.js"></script>
@@ -21,13 +21,33 @@
         const app = createApp({
             setup() {
                 const arr = reactive([1, 2, 3])
+                const color = ref('red')
+                const test = ref('style')
+                setTimeout(() => {
+                    arr[2] = 4
+                }, 2000)
                 return {
                     bar: arr,
+                    color,
+                    test 
                 }
             },
         }).
         component('child-comp', {
-            template: '<div>child component</div>'
+            template: '<div>{{ content }}</div>',
+            props: {
+                type: Object,
+            },
+            data() {
+                return {
+                    content: 'child component'
+                }
+            },
+            mounted() {
+                setTimeout(() => {
+                    this.content = 'change content'
+                }, 2000)
+            }
         })
         app.mount('#app')
     </script>

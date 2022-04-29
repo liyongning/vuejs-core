@@ -10,6 +10,18 @@ const nativeOnRE = /^on[a-z]/
 
 type DOMRendererOptions = RendererOptions<Node, Element>
 
+/**
+ * 负责更新 DOM 元素上的 class、style、事件等属性
+ * @param el DOM 元素
+ * @param key 属性名
+ * @param prevValue 旧的属性值  
+ * @param nextValue 新的属性值
+ * @param isSVG 
+ * @param prevChildren 
+ * @param parentComponent 
+ * @param parentSuspense 
+ * @param unmountChildren 
+ */
 export const patchProp: DOMRendererOptions['patchProp'] = (
   el,
   key,

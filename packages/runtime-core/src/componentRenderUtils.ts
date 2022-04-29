@@ -328,11 +328,23 @@ const isElementRoot = (vnode: VNode) => {
   )
 }
 
+/**
+ * 判断组件是否应该更新
+ *  1. 开发环境下，只要父组件更新了，子组件就更新
+ *  2. newVNode 存在运行时指令或转换，子组件就更新
+ *  3. 如果存在动态插槽则更新
+ *  4. 如果新旧 props 对象或 props[key] 对应的值发生了改变，则更新
+ * @param prevVNode old vnode
+ * @param nextVNode new vnode
+ * @param optimized 是否开启优化模式
+ * @returns 
+ */
 export function shouldUpdateComponent(
   prevVNode: VNode,
   nextVNode: VNode,
   optimized?: boolean
 ): boolean {
+  // 从新旧 vnode 对象上分别解析处 props、子节点、组件实例
   const { props: prevProps, children: prevChildren, component } = prevVNode
   const { props: nextProps, children: nextChildren, patchFlag } = nextVNode
   const emits = component!.emitsOptions
@@ -340,28 +352,39 @@ export function shouldUpdateComponent(
   // Parent component's render function was hot-updated. Since this may have
   // caused the child component's slots content to have changed, we need to
   // force the child to update as well.
+  // 开发模式下，只要父组件更新了，子组件就更新。
+  // 因为父组件更新后，可以能会引起子组件的插槽内容发生改变，所以需要强制子组件也更新
   if (__DEV__ && (prevChildren || nextChildren) && isHmrUpdating) {
     return true
   }
 
   // force child update for runtime directive or transition on component vnode.
+  // 如果 new vnode 上有运行时指令或转换，则强制子组件更新
   if (nextVNode.dirs || nextVNode.transition) {
     return true
   }
 
   if (optimized && patchFlag >= 0) {
+    // 优化模式下，并存在 patchFlag
+
+    // 如果还有动态插槽，则更新，因为插槽内容引用的值可能已经发生改变
     if (patchFlag & PatchFlags.DYNAMIC_SLOTS) {
       // slot content that references values that might have changed,
       // e.g. in a v-for
       return true
     }
     if (patchFlag & PatchFlags.FULL_PROPS) {
+      // 之前 props 对象为空，现在不为空，则子组件需要更新
       if (!prevProps) {
         return !!nextProps
       }
       // presence of this flag indicates props are always non-null
+      // 判断组件的新旧 props 对象是否发生改变
+      //  1. key 的数量不一致则认为发生了改变
+      //  2. props[key] 的值不相等，则认为发生了改变
       return hasPropsChanged(prevProps, nextProps!, emits)
     } else if (patchFlag & PatchFlags.PROPS) {
+      // 也是判断 新旧 props[key] 值是否相等
       const dynamicProps = nextVNode.dynamicProps!
       for (let i = 0; i < dynamicProps.length; i++) {
         const key = dynamicProps[i]
@@ -376,11 +399,14 @@ export function shouldUpdateComponent(
   } else {
     // this path is only taken by manually written render functions
     // so presence of any children leads to a forced update
+    // 没有 patchFlag 会走到这里，一般认为 render 函数是手动生成的，
+    // 所以只要有子节点，就需要强制更新
     if (prevChildren || nextChildren) {
       if (!nextChildren || !(nextChildren as any).$stable) {
         return true
       }
     }
+    // 新旧 props 对象不等则认为需要更新
     if (prevProps === nextProps) {
       return false
     }
@@ -390,21 +416,34 @@ export function shouldUpdateComponent(
     if (!nextProps) {
       return true
     }
+    // 新旧 props[key] 发生改变则需要更新
     return hasPropsChanged(prevProps, nextProps, emits)
   }
 
   return false
 }
 
+/**
+ * 判断组件的新旧 props 对象是否发生改变
+ *  1. key 的数量不一致则认为发生了改变
+ *  2. props[key] 的值不相等，则认为发生了改变
+ * @param prevProps 旧的 props 对象
+ * @param nextProps 新的 props 对象
+ * @param emitsOptions 事件选项
+ * @returns 
+ */
 function hasPropsChanged(
   prevProps: Data,
   nextProps: Data,
   emitsOptions: ComponentInternalInstance['emitsOptions']
 ): boolean {
+  // 获取新的 props 对象的所有 key
   const nextKeys = Object.keys(nextProps)
+  // 如果新旧 props 对象的 key 不一样，则认为 props 对象发生了改变
   if (nextKeys.length !== Object.keys(prevProps).length) {
     return true
   }
+  // 遍历 keys 数组，依次对比新旧 props[key] 的值，如果新旧值不等 && key 不是事件（以 on 开头），则认为 props 发生了改变
   for (let i = 0; i < nextKeys.length; i++) {
     const key = nextKeys[i]
     if (
