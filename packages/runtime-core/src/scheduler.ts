@@ -150,7 +150,7 @@ export function queueJob(job: SchedulerJob) {
  * 并将 isFlushPending 置为 true，表示目前已有待刷新的队列了
  */
 function queueFlush() {
-  // 如果处于正在刷新状态 和 待刷新状态的 队列
+  // 如果没有处于正在刷新状态 和 待刷新状态的 队列，则在浏览器的微任务队列放一个刷新队列的任务
   if (!isFlushing && !isFlushPending) {
     // 标识有待刷新的队列
     isFlushPending = true
