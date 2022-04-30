@@ -70,6 +70,15 @@ export interface KeepAliveContext extends ComponentRenderContext {
 export const isKeepAlive = (vnode: VNode): boolean =>
   (vnode.type as any).__isKeepAlive
 
+/**
+ * KeepAlive 组件的实现
+ *  1. 通过 KeepAlive 组件的默认插槽获取被 keep alive 的组件
+ *  2. 失活组件：卸载组件时不会真的执行 unmount，而是会执行组件实例上的 deactivate 方法，将组件对应的 DOM 移动到一个不再页面上的 DOM 节点内
+ *  3. 激活组件：将刚才隐藏的 DOM 节点再添加回页面，并执行 patch，防止刚才隐藏期间 props 发生改变
+ *  4. KeepAlive 组件和 Vue 的底层渲染器深度结合，首先卸载时执行 unmount，unmount 内部会判断组件是否被 KeepAlive 组件包裹，
+ *     如果是则执行实例上的 deactivate 方法；重新挂载时执行到 processComponent，如果发现组件被 KeepAlive 组件包裹，会执行实例
+ *     上的 activate 方法。
+ */
 const KeepAliveImpl: ComponentOptions = {
   name: `KeepAlive`,
 
@@ -78,6 +87,7 @@ const KeepAliveImpl: ComponentOptions = {
   // would prevent it from being tree-shaken.
   __isKeepAlive: true,
 
+  // 组件接受的三个参数
   props: {
     include: [String, RegExp, Array],
     exclude: [String, RegExp, Array],
@@ -95,6 +105,7 @@ const KeepAliveImpl: ComponentOptions = {
 
     // if the internal renderer is not registered, it indicates that this is server-side rendering,
     // for KeepAlive, we just need to render its children
+    // 服务端渲染的情况
     if (!sharedContext.renderer) {
       return slots.default
     }
@@ -109,17 +120,27 @@ const KeepAliveImpl: ComponentOptions = {
 
     const parentSuspense = instance.suspense
 
+    // 从上下文上导入一些渲染器的方法
     const {
       renderer: {
+        // patch 方法
         p: patch,
+        // 移动节点的方法
         m: move,
+        // 卸载
         um: _unmount,
+        // 创建元素
         o: { createElement }
       }
     } = sharedContext
+    // 容器节点
     const storageContainer = createElement('div')
 
+    // 组件激活时调用，将 vnode 对应的 DOM 节点移动到 container 元素下，显示到页面上，
+    // 并执行 patch 操作，因为在组件消失的这段时间内 props 会发生变化，
+    // 待页面渲染完成后执行相关钩子，比如 activate 钩子
     sharedContext.activate = (vnode, container, anchor, isSVG, optimized) => {
+      debugger
       const instance = vnode.component!
       move(vnode, container, anchor, MoveType.ENTER, parentSuspense)
       // in case props have changed
@@ -151,9 +172,15 @@ const KeepAliveImpl: ComponentOptions = {
       }
     }
 
+    // 组件失活时调用，负责将组件的 DOM 节点移动到 storageContainer 中，
+    // 这样这部分 DOM 节点在页面上就会消失，并在页面渲染完成后执行相关钩子
     sharedContext.deactivate = (vnode: VNode) => {
+      debugger
+      // 组件实例
       const instance = vnode.component!
+      // 移动 vnode 对应的 DOM 元素到 storageContainer 下
       move(vnode, storageContainer, null, MoveType.LEAVE, parentSuspense)
+      // 将相关钩子放到 queuePost 队列中，即页面完成渲染之后执行这些钩子，比如 deactivate 钩子
       queuePostRenderEffect(() => {
         if (instance.da) {
           invokeArrayFns(instance.da)
@@ -237,6 +264,7 @@ const KeepAliveImpl: ComponentOptions = {
       })
     })
 
+    // 组件的渲染函数，重点在于通过 slots.default() 拿到 <KeepAlive></KeepAlive> 组件的插槽内容，即被包裹的组件
     return () => {
       pendingCacheKey = null
 
@@ -334,6 +362,7 @@ if (__COMPAT__) {
 
 // export the public type for h/tsx inference
 // also to avoid inline import() in generated d.ts files
+// 对外导出的 KeppAlive 组件
 export const KeepAlive = KeepAliveImpl as any as {
   __isKeepAlive: true
   new (): {

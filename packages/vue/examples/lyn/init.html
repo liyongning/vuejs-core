@@ -12,7 +12,11 @@
     <div id="app">
         <p class="test" :test="bar" :class="color">{{ bar }}</p>
         <p>I am static note</p>
-        <child-comp :foo="bar"></child-comp>
+        <keep-alive>
+            <component :is="compName"></component>
+        </keep-alive>
+        <!-- <child-comp :foo="bar"></child-comp>
+            <comp1></comp1> -->
     </div>
 
     <script src="../../dist/vue.global.js"></script>
@@ -20,35 +24,46 @@
         const { createApp, ref, onMounted, watch, watchEffect, reactive, computed } = Vue
         const app = createApp({
             setup() {
+                const compName = ref('child-comp')
                 const arr = reactive([1, 2, 3])
                 const color = ref('red')
                 const test = ref('style')
+                onMounted(() => {
                 setTimeout(() => {
                     arr[2] = 4
+                    compName.value = 'comp1'
+
+                    setTimeout(() => {
+                        compName.value = 'child-comp'
+                    }, 2000)
                 }, 2000)
+                })
                 return {
                     bar: arr,
                     color,
-                    test 
+                    test,
+                    compName
                 }
             },
         }).
-        component('child-comp', {
-            template: '<div>{{ content }}</div>',
-            props: {
-                type: Object,
-            },
-            data() {
-                return {
-                    content: 'child component'
+            component('child-comp', {
+                template: '<div>{{ content }}</div>',
+                props: {
+                    type: Object,
+                },
+                data() {
+                    return {
+                        content: 'child component'
+                    }
+                },
+                mounted() {
+                    setTimeout(() => {
+                        this.content = 'change content'
+                    }, 2000)
                 }
-            },
-            mounted() {
-                setTimeout(() => {
-                    this.content = 'change content'
-                }, 2000)
-            }
-        })
+            }).component('comp1', {
+                template: '<div>comp1</div>'
+            })
         app.mount('#app')
     </script>
 </body>

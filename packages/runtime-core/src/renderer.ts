@@ -1410,7 +1410,7 @@ function baseCreateRenderer(
     if (n1 == null) {
       // 老的 vnode 不存在，则执行挂载
       if (n2.shapeFlag & ShapeFlags.COMPONENT_KEPT_ALIVE) {
-        // 如果是被 keep-alive 组件包裹的组件，则执行激活操作，不走更新流程
+        // 如果是被 keep-alive 组件包裹的组件，则执行激活操作，不走挂载流程
         ;(parentComponent!.ctx as KeepAliveContext).activate(
           n2,
           container,
